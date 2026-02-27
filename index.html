@@ -1,0 +1,2336 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+    />
+    <title>TOC Notes Generator</title>
+
+    <!-- Tailwind CSS for Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- jsPDF for PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- PDF.js for Native PDF Rendering in Canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- React & ReactDOM -->
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"
+      crossorigin
+    ></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"
+      crossorigin
+    ></script>
+
+    <!-- Babel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+    <!-- Favicon -->
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="favicons/apple-touch-icon.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="favicons/favicon-32x32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="favicons/favicon-16x16.png"
+    />
+    <link rel="manifest" href="favicons/site.webmanifest" />
+
+    <style>
+      body {
+        font-family: "Inter", system-ui, sans-serif;
+        background-color: #111111;
+        overflow: hidden;
+        margin: 0;
+        padding: 0;
+      }
+
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: #333;
+        border-radius: 10px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: #555;
+      }
+
+      .spring-transition {
+        transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+
+      .fade-up-enter {
+        animation: fadeUp 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      @keyframes fadeUp {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .path-input {
+        background-color: #1c1c1e;
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        border: 1px solid #2c2c2e;
+        color: white;
+        color-scheme: dark;
+        box-sizing: border-box;
+      }
+
+      .path-input:focus {
+        border-color: #e42025;
+        box-shadow:
+          0 0 0 3px rgba(228, 32, 37, 0.2),
+          inset 0 2px 4px rgba(0, 0, 0, 0.2);
+        outline: none;
+      }
+
+      /* Custom Range Slider */
+      input[type="range"] {
+        -webkit-appearance: none;
+        background: transparent;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        height: 14px;
+        width: 14px;
+        border-radius: 50%;
+        background: #e42025;
+        cursor: pointer;
+        margin-top: -5px;
+        box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+      }
+
+      input[type="range"]::-webkit-slider-runnable-track {
+        width: 100%;
+        height: 4px;
+        cursor: pointer;
+        background: #333;
+        border-radius: 2px;
+      }
+
+      input[type="range"]:focus {
+        outline: none;
+      }
+
+      /* Expanded clickable area for date inputs - fixed for mobile overflow */
+      input[type="date"] {
+        position: relative;
+        width: 100%;
+        box-sizing: border-box;
+        min-width: 0;
+      }
+
+      input[type="date"]::-webkit-calendar-picker-indicator {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+        box-sizing: border-box;
+      }
+
+      /* Custom Checkbox Toggle Styles */
+      .toggle-checkbox:checked {
+        right: 0;
+        border-color: #e42025;
+      }
+
+      .toggle-checkbox:checked + .toggle-label {
+        background-color: #e42025;
+      }
+
+      .toggle-checkbox:checked + .toggle-label:after {
+        transform: translateX(100%);
+        border-color: white;
+      }
+
+      @media (max-width: 767px) {
+        .resizable-sidebar {
+          width: 100% !important;
+          border-right: none;
+        }
+
+        .resize-handle {
+          display: none !important;
+        }
+      }
+
+      /* Ensure smooth scrolling inside the pdf container */
+      .scroll-smooth {
+        scroll-behavior: smooth;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect, useCallback, useRef } = React;
+
+      // --- Custom Icon Engine ---
+      const Icon = ({
+        name,
+        className = "w-6 h-6",
+        strokeWidth = 2,
+        style,
+      }) => {
+        const paths = {
+          Plus: (
+            <>
+              <path d="M5 12h14" />
+              <path d="M12 5v14" />
+            </>
+          ),
+          Sun: (
+            <>
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2" />
+              <path d="M12 20v2" />
+              <path d="m4.93 4.93 1.41 1.41" />
+              <path d="m17.66 17.66 1.41 1.41" />
+              <path d="M2 12h2" />
+              <path d="M20 12h2" />
+              <path d="m6.34 17.66-1.41 1.41" />
+              <path d="m19.07 4.93-1.41 1.41" />
+            </>
+          ),
+          Sunrise: (
+            <>
+              <path d="M12 2v8" />
+              <path d="m4.93 10.93 1.41 1.41" />
+              <path d="M2 18h2" />
+              <path d="M20 18h2" />
+              <path d="m19.07 10.93-1.41 1.41" />
+              <path d="M22 22H2" />
+              <path d="m8 6 4-4 4 4" />
+              <path d="M16 18a4 4 0 0 0-8 0" />
+            </>
+          ),
+          Sunset: (
+            <>
+              <path d="M12 10V2" />
+              <path d="m4.93 10.93 1.41 1.41" />
+              <path d="M2 18h2" />
+              <path d="M20 18h2" />
+              <path d="m19.07 10.93-1.41 1.41" />
+              <path d="M22 22H2" />
+              <path d="m16 5-4 4-4-4" />
+              <path d="M16 18a4 4 0 0 0-8 0" />
+            </>
+          ),
+          CalendarDays: (
+            <>
+              <path d="M8 2v4" />
+              <path d="M16 2v4" />
+              <rect width="18" height="18" x="3" y="4" rx="2" />
+              <path d="M3 10h18" />
+              <path d="M8 14h.01" />
+              <path d="M12 14h.01" />
+              <path d="M16 14h.01" />
+              <path d="M8 18h.01" />
+              <path d="M12 18h.01" />
+              <path d="M16 18h.01" />
+            </>
+          ),
+          Check: (
+            <>
+              <path d="M20 6 9 17l-5-5" />
+            </>
+          ),
+          MapPin: (
+            <>
+              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+              <circle cx="12" cy="10" r="3" />
+            </>
+          ),
+          Clock: (
+            <>
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
+            </>
+          ),
+          FileText: (
+            <>
+              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+              <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+              <path d="M10 9H8" />
+              <path d="M16 13H8" />
+              <path d="M16 17H8" />
+            </>
+          ),
+          Download: (
+            <>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" x2="12" y1="15" y2="3" />
+            </>
+          ),
+          User: (
+            <>
+              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </>
+          ),
+          ChevronLeft: (
+            <>
+              <path d="m15 18-6-6 6-6" />
+            </>
+          ),
+          ChevronRight: (
+            <>
+              <path d="m9 18 6-6-6-6" />
+            </>
+          ),
+          ZoomIn: (
+            <>
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" x2="16.65" y1="21" y2="16.65" />
+              <line x1="11" x2="11" y1="8" y2="14" />
+              <line x1="8" x2="14" y1="11" y2="11" />
+            </>
+          ),
+          ZoomOut: (
+            <>
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" x2="16.65" y1="21" y2="16.65" />
+              <line x1="8" x2="14" y1="11" y2="11" />
+            </>
+          ),
+          Image: (
+            <>
+              <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+              <circle cx="9" cy="9" r="2" />
+              <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+            </>
+          ),
+          Trash: (
+            <>
+              <path d="M3 6h18" />
+              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+            </>
+          ),
+        };
+        return (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+            style={style}
+          >
+            {paths[name]}
+          </svg>
+        );
+      };
+
+      // --- Schedule Definitions ---
+      const SCHEDULES = {
+        regular: [
+          {
+            id: "p1",
+            name: "Block A",
+            start: "8:30 AM",
+            end: "9:40 AM",
+            type: "am",
+          },
+          {
+            id: "flex",
+            name: "FLEX",
+            start: "9:45 AM",
+            end: "10:20 AM",
+            type: "am",
+          },
+          {
+            id: "p2",
+            name: "Block B",
+            start: "10:25 AM",
+            end: "11:35 AM",
+            type: "am",
+          },
+          {
+            id: "lunch",
+            name: "LUNCH BREAK",
+            start: "11:35 AM",
+            end: "12:15 PM",
+            type: "lunch",
+            isFixed: true,
+          },
+          {
+            id: "p3",
+            name: "Block C",
+            start: "12:20 PM",
+            end: "1:30 PM",
+            type: "pm",
+          },
+          {
+            id: "p4",
+            name: "Block D",
+            start: "1:35 PM",
+            end: "2:45 PM",
+            type: "pm",
+          },
+        ],
+        wednesday: [
+          {
+            id: "collab",
+            name: "COLLABORATION TIME",
+            start: "8:30 AM",
+            end: "9:30 AM",
+            type: "am",
+            isFixed: true,
+          },
+          {
+            id: "p1",
+            name: "Block A",
+            start: "9:30 AM",
+            end: "10:35 AM",
+            type: "am",
+          },
+          {
+            id: "p2",
+            name: "Block B",
+            start: "10:40 AM",
+            end: "11:45 AM",
+            type: "am",
+          },
+          {
+            id: "lunch",
+            name: "LUNCH BREAK",
+            start: "11:45 AM",
+            end: "12:25 PM",
+            type: "lunch",
+            isFixed: true,
+          },
+          {
+            id: "p3",
+            name: "Block C",
+            start: "12:30 PM",
+            end: "1:35 PM",
+            type: "pm",
+          },
+          {
+            id: "p4",
+            name: "Block D",
+            start: "1:40 PM",
+            end: "2:45 PM",
+            type: "pm",
+          },
+        ],
+      };
+
+      const adjustToWeekday = (dateStr) => {
+        if (!dateStr) return "";
+        const d = new Date(dateStr + "T12:00:00");
+        const day = d.getDay();
+        if (day === 0) d.setDate(d.getDate() + 1); // Sunday -> Monday
+        if (day === 6) d.setDate(d.getDate() + 2); // Saturday -> Monday
+        return d.toISOString().split("T")[0];
+      };
+
+      const getWeekdaysBetween = (startStr, endStr) => {
+        let curr = new Date(startStr + "T12:00:00");
+        const end = new Date(endStr + "T12:00:00");
+        const dates = [];
+        if (curr > end) return [startStr];
+        while (curr <= end) {
+          const day = curr.getDay();
+          if (day !== 0 && day !== 6)
+            dates.push(curr.toISOString().split("T")[0]);
+          curr.setDate(curr.getDate() + 1);
+        }
+        return dates.length > 0 ? dates : [startStr];
+      };
+
+      // --- Single PDF Page Component ---
+      const PdfPage = ({ pdfDoc, pageNumber, zoom }) => {
+        const canvasRef = useRef(null);
+        const [isRendering, setIsRendering] = useState(false);
+
+        useEffect(() => {
+          let renderTask = null;
+          let isActive = true;
+
+          const renderPage = async () => {
+            if (!pdfDoc || !canvasRef.current) return;
+            setIsRendering(true);
+
+            try {
+              const page = await pdfDoc.getPage(pageNumber);
+              if (!isActive) return;
+
+              const unscaledViewport = page.getViewport({ scale: zoom / 100 });
+              const outputScale = window.devicePixelRatio || 1;
+
+              const canvas = canvasRef.current;
+              const context = canvas.getContext("2d");
+
+              canvas.width = Math.floor(unscaledViewport.width * outputScale);
+              canvas.height = Math.floor(unscaledViewport.height * outputScale);
+              canvas.style.width = Math.floor(unscaledViewport.width) + "px";
+              canvas.style.height = Math.floor(unscaledViewport.height) + "px";
+
+              const transform =
+                outputScale !== 1
+                  ? [outputScale, 0, 0, outputScale, 0, 0]
+                  : null;
+
+              const renderContext = {
+                canvasContext: context,
+                transform: transform,
+                viewport: unscaledViewport,
+              };
+
+              renderTask = page.render(renderContext);
+              await renderTask.promise;
+            } catch (e) {
+              if (e.name !== "RenderingCancelledException") {
+                console.error(`PDF Render Error on page ${pageNumber}`, e);
+              }
+            } finally {
+              if (isActive) setIsRendering(false);
+            }
+          };
+
+          renderPage();
+
+          return () => {
+            isActive = false;
+            if (renderTask) renderTask.cancel();
+          };
+        }, [pdfDoc, pageNumber, zoom]);
+
+        return (
+          <canvas
+            ref={canvasRef}
+            className="shadow-2xl bg-white transition-opacity duration-200 shrink-0"
+            style={{ opacity: isRendering ? 0.7 : 1 }}
+          />
+        );
+      };
+
+      // --- Main App Component ---
+      function App() {
+        const today = new Date();
+        const localDateStr =
+          today.getFullYear() +
+          "-" +
+          String(today.getMonth() + 1).padStart(2, "0") +
+          "-" +
+          String(today.getDate()).padStart(2, "0");
+        const initialWeekday = adjustToWeekday(localDateStr);
+
+        // UI & App State
+        const [appState, setAppState] = useState("idle");
+        const [menuOpen, setMenuOpen] = useState(true);
+        const [scriptsLoaded, setScriptsLoaded] = useState(false);
+        const [toastMessage, setToastMessage] = useState(null);
+
+        // Layout State (Resizable Sidebar)
+        const [sidebarWidth, setSidebarWidth] = useState(480);
+        const isDragging = useRef(false);
+
+        // Global Info
+        const [teacherName, setTeacherName] = useState("");
+
+        // Configuration State
+        const [selectedAbsenceType, setSelectedAbsenceType] = useState("Full");
+        const [startDate, setStartDate] = useState(initialWeekday);
+        const [endDate, setEndDate] = useState(initialWeekday);
+
+        // Days Data
+        const [daysData, setDaysData] = useState([]);
+        const [currentDayIndex, setCurrentDayIndex] = useState(0);
+
+        // Built-in PDF Engine State
+        const [pdfDoc, setPdfDoc] = useState(null);
+        const [previewPage, setPreviewPage] = useState(1);
+        const [previewZoom, setPreviewZoom] = useState(100);
+        const [pdfTotalPages, setPdfTotalPages] = useState(1);
+
+        const sidebarRef = useRef(null);
+
+        // --- Initialization ---
+        useEffect(() => {
+          if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+              "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+            setScriptsLoaded(true);
+          }
+        }, []);
+
+        // Non-passive wheel listener for pinch-zoom (must be imperative so we can preventDefault)
+        useEffect(() => {
+          const el = previewContainerRef.current;
+          if (!el) return;
+          const onWheel = (e) => {
+            if (e.ctrlKey) {
+              e.preventDefault();
+              setPreviewZoom((z) => {
+                const delta = e.deltaY > 0 ? -10 : 10;
+                return Math.min(250, Math.max(50, z + delta));
+              });
+            }
+          };
+          el.addEventListener("wheel", onWheel, { passive: false });
+          return () => el.removeEventListener("wheel", onWheel);
+        }, [pdfDoc]); // re-attach when pdfDoc loads (container becomes visible)
+
+        // --- Resizable Sidebar Logic ---
+        const handleMouseDown = (e) => {
+          e.preventDefault();
+          isDragging.current = true;
+          document.body.style.cursor = "col-resize";
+          document.addEventListener("mousemove", handleMouseMove);
+          document.addEventListener("mouseup", handleMouseUp);
+        };
+
+        const handleMouseMove = useCallback((e) => {
+          if (!isDragging.current) return;
+          let newWidth = e.clientX;
+          if (newWidth < 320) newWidth = 320; // Min Width
+          const maxWidth = window.innerWidth - 300; // Leave space for preview
+          if (newWidth > maxWidth) newWidth = maxWidth;
+          setSidebarWidth(newWidth);
+        }, []);
+
+        const handleMouseUp = useCallback(() => {
+          isDragging.current = false;
+          document.body.style.cursor = "default";
+          document.removeEventListener("mousemove", handleMouseMove);
+          document.removeEventListener("mouseup", handleMouseUp);
+        }, [handleMouseMove]);
+
+        // --- Logic Helpers ---
+        const getBlockName = (id, dateStr) => {
+          let day = new Date(dateStr + "T12:00:00").getDay();
+          if (day === 0 || day === 6) day = 1;
+
+          const rotations = {
+            1: { p1: "Block A", p2: "Block B", p3: "Block C", p4: "Block D" },
+            2: { p1: "Block B", p2: "Block A", p3: "Block D", p4: "Block C" },
+            3: { p1: "Block A", p2: "Block B", p3: "Block C", p4: "Block D" },
+            4: { p1: "Block C", p2: "Block D", p3: "Block A", p4: "Block B" },
+            5: { p1: "Block D", p2: "Block C", p3: "Block B", p4: "Block A" },
+          };
+
+          if (id === "flex") return "FLEX";
+          if (id === "lunch") return "LUNCH BREAK";
+          if (id === "prep") return "PREP";
+          if (id === "collab") return "COLLABORATION TIME";
+
+          return rotations[day]?.[id] || id;
+        };
+
+        const getScheduleForDate = (dateStr, absenceType) => {
+          const dateObj = new Date(dateStr + "T12:00:00");
+          const dayOfWeek = dateObj.getDay();
+          const activeSchedule =
+            dayOfWeek === 3 ? SCHEDULES.wednesday : SCHEDULES.regular;
+
+          const typeToFilter =
+            absenceType === "Multi-Day" ? "Full" : absenceType;
+
+          return activeSchedule
+            .map((item) => ({ ...item, name: getBlockName(item.id, dateStr) }))
+            .filter((item) => {
+              if (typeToFilter === "Full") return true;
+              if (
+                typeToFilter === "AM" &&
+                (item.type === "am" || item.type === "lunch")
+              )
+                return true;
+              if (
+                typeToFilter === "PM" &&
+                (item.type === "pm" || item.type === "lunch")
+              )
+                return true;
+              return false;
+            });
+        };
+
+        const createEmptyDay = (dateStr, absenceType) => {
+          const schedule = getScheduleForDate(dateStr, absenceType);
+          const blocks = {};
+          schedule.forEach((p) => {
+            blocks[p.id] = {
+              course: "",
+              room: "",
+              notes: "",
+              isPrep: !!p.isPrep,
+              images: [],
+            };
+          });
+          return {
+            date: dateStr,
+            absenceType: absenceType,
+            generalNotes: "",
+            finalNotes: "",
+            blocks: blocks,
+          };
+        };
+
+        const showToast = (message) => {
+          setToastMessage(message);
+          setTimeout(() => setToastMessage(null), 5000);
+        };
+
+        // --- Event Handlers ---
+        const handleMenuSelect = (type) => {
+          setSelectedAbsenceType(type);
+          setAppState("setup");
+          setMenuOpen(false);
+        };
+
+        const handleStartConfiguration = () => {
+          if (!teacherName.trim()) return;
+
+          let datesToGenerate = [];
+          if (selectedAbsenceType === "Multi-Day") {
+            datesToGenerate = getWeekdaysBetween(startDate, endDate);
+          } else {
+            datesToGenerate = [startDate];
+          }
+
+          const newDaysData = datesToGenerate.map((date) =>
+            createEmptyDay(
+              date,
+              selectedAbsenceType === "Multi-Day"
+                ? "Full"
+                : selectedAbsenceType,
+            ),
+          );
+
+          setDaysData(newDaysData);
+          setCurrentDayIndex(0);
+          setAppState("editing");
+          if (sidebarRef.current) sidebarRef.current.scrollTop = 0;
+        };
+
+        const handleDayChange = (field, value) => {
+          const newData = [...daysData];
+          newData[currentDayIndex][field] = value;
+          setDaysData(newData);
+        };
+
+        const handleBlockChange = (blockId, field, value) => {
+          const newData = [...daysData];
+          const block = newData[currentDayIndex].blocks[blockId];
+          block[field] = value;
+
+          // Special handling for Prep toggle
+          if (field === "isPrep") {
+            if (value === true) {
+              block.course = "";
+              block.room = "";
+              if (!block.notes) {
+                block.notes =
+                  "Please check with the office to see if any assistance is needed.";
+              }
+            }
+          }
+          setDaysData(newData);
+        };
+
+        const handleImageUpload = (blockId, e) => {
+          const files = Array.from(e.target.files);
+          if (!files.length) return;
+
+          files.forEach((file) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const dataUrl = event.target.result;
+              const img = new window.Image();
+              img.onload = () => {
+                // Normalize EXIF rotation by drawing to canvas.
+                // Browsers apply EXIF orientation when painting to canvas,
+                // so the resulting dataUrl is always correctly oriented.
+                const canvas = document.createElement("canvas");
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0);
+                const normalizedDataUrl = canvas.toDataURL("image/jpeg", 0.92);
+
+                setDaysData((prev) => {
+                  const newData = [...prev];
+                  const block = newData[currentDayIndex].blocks[blockId];
+                  if (!block.images) block.images = [];
+                  block.images.push({
+                    id: Date.now() + Math.random(),
+                    dataUrl: normalizedDataUrl,
+                    width: canvas.width,
+                    height: canvas.height,
+                    caption: "",
+                    size: "M", // Default Size
+                  });
+                  return newData;
+                });
+              };
+              img.src = dataUrl;
+            };
+            reader.readAsDataURL(file);
+          });
+          e.target.value = null;
+        };
+
+        const handleImageCaptionChange = (blockId, imgId, caption) => {
+          setDaysData((prev) => {
+            const newData = [...prev];
+            const images = newData[currentDayIndex].blocks[blockId].images;
+            const imgIndex = images.findIndex((img) => img.id === imgId);
+            if (imgIndex !== -1) images[imgIndex].caption = caption;
+            return newData;
+          });
+        };
+
+        const handleImageSizeChange = (blockId, imgId, size) => {
+          setDaysData((prev) => {
+            const newData = [...prev];
+            const images = newData[currentDayIndex].blocks[blockId].images;
+            const imgIndex = images.findIndex((img) => img.id === imgId);
+            if (imgIndex !== -1) images[imgIndex].size = size;
+            return newData;
+          });
+        };
+
+        const removeImage = (blockId, imgId) => {
+          setDaysData((prev) => {
+            const newData = [...prev];
+            const block = newData[currentDayIndex].blocks[blockId];
+            block.images = block.images.filter((img) => img.id !== imgId);
+            return newData;
+          });
+        };
+
+        const copyPreviousDay = () => {
+          if (currentDayIndex === 0) return;
+
+          const prevData = daysData[currentDayIndex - 1];
+          const currData = daysData[currentDayIndex];
+
+          const prevSchedule = getScheduleForDate(
+            prevData.date,
+            prevData.absenceType,
+          );
+          const currSchedule = getScheduleForDate(
+            currData.date,
+            currData.absenceType,
+          );
+
+          const prevBlocksByName = {};
+          prevSchedule.forEach((p) => {
+            if (prevData.blocks[p.id]) {
+              prevBlocksByName[p.name] = prevData.blocks[p.id];
+            }
+          });
+
+          const newBlocks = JSON.parse(JSON.stringify(currData.blocks));
+          currSchedule.forEach((p) => {
+            if (prevBlocksByName[p.name]) {
+              newBlocks[p.id] = JSON.parse(
+                JSON.stringify(prevBlocksByName[p.name]),
+              );
+            }
+          });
+
+          const newData = [...daysData];
+          newData[currentDayIndex] = {
+            ...currData,
+            generalNotes: prevData.generalNotes,
+            finalNotes: prevData.finalNotes || "",
+            blocks: newBlocks,
+          };
+
+          setDaysData(newData);
+          showToast(
+            "Block information successfully mapped from the previous day!",
+          );
+        };
+
+        const navigateDay = (direction) => {
+          const newIndex = currentDayIndex + direction;
+          if (newIndex >= 0 && newIndex < daysData.length) {
+            setCurrentDayIndex(newIndex);
+            if (sidebarRef.current) sidebarRef.current.scrollTop = 0;
+          }
+        };
+
+        const handlePreviewScroll = useCallback((e) => {
+          const container = e.target;
+          const pages = container.querySelectorAll(".pdf-page-container");
+          const containerTop = container.getBoundingClientRect().top;
+
+          let closestPage = 1;
+          let minDistance = Infinity;
+
+          pages.forEach((page, index) => {
+            const rect = page.getBoundingClientRect();
+            const distance = Math.abs(rect.top - containerTop);
+
+            if (distance < minDistance) {
+              minDistance = distance;
+              closestPage = index + 1;
+            }
+          });
+
+          setPreviewPage(closestPage);
+        }, []);
+
+        // --- Preview Pan & Pinch-Zoom ---
+        const isPanning = useRef(false);
+        const panStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+        const previewContainerRef = useRef(null);
+        const lastTouchDist = useRef(null);
+
+        const handlePreviewMouseDown = useCallback((e) => {
+          if (e.button !== 0) return;
+          isPanning.current = true;
+          const el = previewContainerRef.current;
+          panStart.current = {
+            x: e.clientX,
+            y: e.clientY,
+            scrollLeft: el.scrollLeft,
+            scrollTop: el.scrollTop,
+          };
+          e.currentTarget.style.cursor = "grabbing";
+          e.currentTarget.style.userSelect = "none";
+        }, []);
+
+        const handlePreviewMouseMove = useCallback((e) => {
+          if (!isPanning.current) return;
+          const el = previewContainerRef.current;
+          const dx = e.clientX - panStart.current.x;
+          const dy = e.clientY - panStart.current.y;
+          el.scrollLeft = panStart.current.scrollLeft - dx;
+          el.scrollTop = panStart.current.scrollTop - dy;
+        }, []);
+
+        const handlePreviewMouseUp = useCallback((e) => {
+          if (!isPanning.current) return;
+          isPanning.current = false;
+          e.currentTarget.style.cursor = "grab";
+          e.currentTarget.style.userSelect = "";
+        }, []);
+
+        const handlePreviewWheel = useCallback((e) => {
+          // Trackpad pinch sends wheel events with ctrlKey = true
+          if (e.ctrlKey) {
+            e.preventDefault();
+            setPreviewZoom((z) => {
+              const delta = e.deltaY > 0 ? -10 : 10;
+              return Math.min(250, Math.max(50, z + delta));
+            });
+          }
+        }, []);
+
+        const handleTouchStart = useCallback((e) => {
+          if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            lastTouchDist.current = Math.hypot(dx, dy);
+          }
+        }, []);
+
+        const handleTouchMove = useCallback((e) => {
+          if (e.touches.length === 2 && lastTouchDist.current !== null) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const newDist = Math.hypot(dx, dy);
+            const scale = newDist / lastTouchDist.current;
+            lastTouchDist.current = newDist;
+            setPreviewZoom((z) =>
+              Math.min(250, Math.max(50, Math.round(z * scale))),
+            );
+          }
+        }, []);
+
+        const handleTouchEnd = useCallback(() => {
+          lastTouchDist.current = null;
+        }, []);
+
+        const scrollToPage = (pageNum) => {
+          const pageEl = document.getElementById(`pdf-page-${pageNum}`);
+          if (pageEl) {
+            pageEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        };
+
+        // --- PDF Core Build Logic ---
+        const buildPDF = useCallback(() => {
+          if (!scriptsLoaded || !window.jspdf || daysData.length === 0)
+            return null;
+
+          try {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ format: "letter" });
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const margin = 20;
+
+            daysData.forEach((dayConfig, index) => {
+              if (index > 0) doc.addPage();
+
+              // Title
+              const titleFontSize = 26;
+              const titleY = 24;
+              doc.setTextColor(20, 20, 22);
+              doc.setFontSize(titleFontSize);
+              doc.setFont("helvetica", "bold");
+              doc.text("TOC NOTES", margin, titleY);
+
+              // Meta Info Block (Refined Compact Badge)
+              const [yy, mm, dd] = dayConfig.date.split("-");
+              const dateObj = new Date(yy, mm - 1, dd);
+              const days = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+              const months = [
+                "JAN",
+                "FEB",
+                "MAR",
+                "APR",
+                "MAY",
+                "JUN",
+                "JUL",
+                "AUG",
+                "SEP",
+                "OCT",
+                "NOV",
+                "DEC",
+              ];
+              const dayStr = days[dateObj.getDay()];
+              const dateFormatted = `${months[dateObj.getMonth()]} ${parseInt(dd)}, ${yy}`;
+              const teacherStrFormatted = (
+                teacherName || "NOT SPECIFIED"
+              ).toUpperCase();
+
+              doc.setFont("helvetica", "bold");
+              const dateSize = 9;
+              const nameSize = 10;
+              const daySize = titleFontSize;
+
+              doc.setFontSize(dateSize);
+              const wDate = doc.getTextWidth(dateFormatted);
+              doc.setFontSize(nameSize);
+              const wTeacher = doc.getTextWidth(teacherStrFormatted);
+
+              const rightPanelWidth = Math.max(wDate, wTeacher) + 12;
+              const leftPanelWidth = 36;
+              const headerBoxWidth = leftPanelWidth + rightPanelWidth;
+              const boxX = pageWidth - margin - headerBoxWidth;
+
+              const boxHeight = 15;
+              const boxY = titleY - 13;
+              const boxCenterY = boxY + boxHeight / 2;
+
+              // Draw Badge Box
+              doc.setFillColor(255, 255, 255);
+              doc.setDrawColor(220, 220, 225);
+              doc.setLineWidth(0.4);
+              doc.roundedRect(
+                boxX,
+                boxY,
+                headerBoxWidth,
+                boxHeight,
+                2,
+                2,
+                "FD",
+              );
+
+              // Draw Vertical Divider
+              doc.setDrawColor(230, 230, 235);
+              doc.line(
+                boxX + leftPanelWidth,
+                boxY + 2,
+                boxX + leftPanelWidth,
+                boxY + boxHeight - 2,
+              );
+
+              // Text Render
+              doc.setFontSize(daySize);
+              doc.setTextColor(228, 32, 37);
+              doc.text(dayStr, boxX + leftPanelWidth / 2, boxCenterY, {
+                align: "center",
+                baseline: "middle",
+              });
+              doc.setFontSize(dateSize);
+              doc.setTextColor(120, 120, 120);
+              doc.text(
+                dateFormatted,
+                boxX + leftPanelWidth + 6,
+                boxCenterY - 3,
+                { baseline: "middle" },
+              );
+              doc.setFontSize(nameSize);
+              doc.setTextColor(40, 40, 40);
+              doc.text(
+                teacherStrFormatted,
+                boxX + leftPanelWidth + 6,
+                boxCenterY + 3,
+                { baseline: "middle" },
+              );
+
+              // Divider Line beneath header
+              doc.setDrawColor(240, 240, 240);
+              doc.setLineWidth(0.5);
+              doc.line(margin, 36, pageWidth - margin, 36);
+
+              let currentY = 44; // Content start
+
+              // General Notes
+              if (dayConfig.generalNotes) {
+                doc.setFontSize(9);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(228, 32, 37);
+                doc.text("NOTES", margin, currentY);
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(9.5);
+                doc.setTextColor(60, 60, 60);
+
+                const splitNotes = doc.splitTextToSize(
+                  dayConfig.generalNotes.trim(),
+                  pageWidth - margin * 2 - 10,
+                );
+                const notesBoxHeight = splitNotes.length * 4.5 + 1.5;
+
+                doc.setDrawColor(228, 32, 37);
+                doc.setLineWidth(1);
+                doc.line(
+                  margin,
+                  currentY + 2.5,
+                  margin,
+                  currentY + 2.5 + notesBoxHeight,
+                );
+                doc.setFillColor(249, 249, 250);
+                doc.rect(
+                  margin + 1,
+                  currentY + 2.5,
+                  pageWidth - margin * 2 - 1,
+                  notesBoxHeight,
+                  "F",
+                );
+                doc.text(splitNotes, margin + 6, currentY + 6.2);
+                currentY += notesBoxHeight + 11;
+              } else {
+                currentY += 2;
+              }
+
+              const schedule = getScheduleForDate(
+                dayConfig.date,
+                dayConfig.absenceType,
+              );
+
+              // --- TIMELINE LAYOUT CONSTANTS ---
+              // Times are left-aligned at `margin` so they start flush with the "TOC NOTES" title
+              const timeLeftX = margin;
+              const dotX = margin + 18;
+              const contentX = margin + 26;
+              const contentBoxWidth = pageWidth - margin - contentX;
+
+              schedule.forEach((p, sIdx) => {
+                const blockData = dayConfig.blocks[p.id];
+                const isFixed = p.isFixed;
+                const isPrep = blockData?.isPrep;
+
+                // Format notes text
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(9.5);
+                let notesLines = [];
+                if (blockData?.notes && !isFixed) {
+                  notesLines = doc.splitTextToSize(
+                    blockData.notes.trim(),
+                    contentBoxWidth - 8,
+                  );
+                }
+
+                // --- IMAGE FLEX LAYOUT CALCULATION ---
+                let imagesHeight = 0;
+                const processedImages = [];
+
+                if (
+                  blockData?.images &&
+                  blockData.images.length > 0 &&
+                  !isFixed
+                ) {
+                  let currImgX = 0;
+                  let currImgY = 0;
+                  let rowMaxH = 0;
+                  const gapX = 4;
+                  const gapY = 6;
+                  const maxAvailWidth = contentBoxWidth - 16; // 8px padding inside card
+
+                  blockData.images.forEach((img) => {
+                    const sizeMap = {
+                      S: (maxAvailWidth - gapX * 2) / 3, // 3 cols
+                      M: (maxAvailWidth - gapX) / 2, // 2 cols
+                      L: maxAvailWidth, // 1 col
+                    };
+                    const targetMaxW = sizeMap[img.size || "M"];
+
+                    // Scale image (ensures w <= targetMaxW <= maxAvailWidth)
+                    let scale = Math.min(1, targetMaxW / img.width);
+                    let w = img.width * scale;
+                    let h = img.height * scale;
+
+                    // Restrict max heights based on size to keep PDF clean
+                    const maxH =
+                      img.size === "S" ? 80 : img.size === "M" ? 120 : 180;
+                    if (h > maxH) {
+                      scale = maxH / img.height;
+                      w = img.width * scale;
+                      h = img.height * scale;
+                    }
+
+                    // Measure Caption using the scaled width ensuring it stays inside bounds
+                    doc.setFontSize(8);
+                    const capLines = img.caption
+                      ? doc.splitTextToSize(img.caption, w - 4)
+                      : [];
+                    const capBoxHeight =
+                      capLines.length > 0 ? capLines.length * 3.5 + 3 : 0;
+
+                    const totalItemHeight =
+                      h + (capBoxHeight > 0 ? capBoxHeight + 1 : 0);
+
+                    // Row Wrap Logic (with tolerance for float math)
+                    if (currImgX + w > maxAvailWidth + 0.5 && currImgX > 0) {
+                      currImgY += rowMaxH + gapY;
+                      currImgX = 0;
+                      rowMaxH = 0;
+                    }
+
+                    let format = "PNG";
+                    try {
+                      const mime = img.dataUrl.substring(
+                        img.dataUrl.indexOf(":") + 1,
+                        img.dataUrl.indexOf(";"),
+                      );
+                      if (mime.includes("jpeg") || mime.includes("jpg"))
+                        format = "JPEG";
+                      else if (mime.includes("webp")) format = "WEBP";
+                    } catch (e) {}
+
+                    processedImages.push({
+                      dataUrl: img.dataUrl,
+                      format,
+                      w,
+                      h,
+                      relX: currImgX,
+                      relY: currImgY,
+                      capLines,
+                      capBoxHeight,
+                    });
+
+                    rowMaxH = Math.max(rowMaxH, totalItemHeight);
+                    currImgX += w + gapX;
+                  });
+
+                  imagesHeight = currImgY + rowMaxH;
+                }
+
+                // Block Container Height Calc - Exactly matching content rendering
+                const rowSpacing = 8;
+                let contentBoxHeight = 0;
+                let totalRowHeight = 0;
+                const headerHeight = 10.5;
+
+                if (isFixed) {
+                  contentBoxHeight = 10.5;
+                  totalRowHeight = contentBoxHeight + rowSpacing;
+                } else {
+                  // When there's no notes and no images, render as a compact single-row header
+                  if (notesLines.length === 0 && processedImages.length === 0) {
+                    contentBoxHeight = headerHeight;
+                  } else {
+                    // Strictly calculate required bounds by simulating Y progression
+                    let calcHeight = headerHeight + 4.5; // Starts drawing notes here
+
+                    if (notesLines.length > 0) {
+                      calcHeight += notesLines.length * 4.5 + 2;
+                    }
+
+                    if (processedImages.length > 0) {
+                      calcHeight += 2; // top padding for images
+                      calcHeight += imagesHeight;
+                    }
+
+                    // Bottom padding: images need generous clearance; notes-only just needs a hair
+                    if (processedImages.length > 0) {
+                      calcHeight += 4;
+                    } else if (notesLines.length > 0) {
+                      calcHeight += 1;
+                    } else {
+                      calcHeight += 2;
+                    }
+
+                    contentBoxHeight = calcHeight;
+                  }
+                  totalRowHeight = contentBoxHeight + rowSpacing;
+                }
+
+                // Page Break detection
+                if (
+                  currentY + totalRowHeight > pageHeight - margin &&
+                  currentY > margin + 20
+                ) {
+                  doc.addPage();
+                  currentY = margin + 10;
+                }
+
+                // 1. Draw connecting vertical line (only between schedule blocks, not beyond the last one)
+                if (sIdx < schedule.length - 1) {
+                  doc.setDrawColor(230, 230, 235);
+                  doc.setLineWidth(0.6);
+                  doc.line(
+                    dotX,
+                    currentY + 4.5,
+                    dotX,
+                    currentY + totalRowHeight + 4.5,
+                  );
+                }
+
+                // 2. Draw Timeline Dot
+                doc.setFillColor(255, 255, 255);
+                if (isFixed || isPrep) {
+                  doc.setDrawColor(200, 200, 200);
+                } else {
+                  doc.setDrawColor(228, 32, 37);
+                }
+                doc.setLineWidth(1.2);
+                doc.circle(dotX, currentY + 4.5, 3, "FD");
+
+                // 3. Draw Time (Stacked)
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(7.5);
+                doc.setTextColor(140, 140, 140);
+                doc.text(p.start, timeLeftX, currentY + 3.5);
+                doc.text(p.end, timeLeftX, currentY + 7.5);
+
+                // 4. Draw Content Card
+                if (isFixed) {
+                  doc.setFillColor(250, 250, 250);
+                  doc.setDrawColor(220, 220, 220);
+                  doc.setLineWidth(0.5);
+                  doc.roundedRect(
+                    contentX,
+                    currentY,
+                    contentBoxWidth,
+                    contentBoxHeight,
+                    2,
+                    2,
+                    "FD",
+                  );
+
+                  doc.setFont("helvetica", "bold");
+                  doc.setFontSize(10.5);
+                  doc.setTextColor(150, 150, 150);
+                  doc.text(
+                    p.name.toUpperCase(),
+                    contentX + 4,
+                    currentY + contentBoxHeight / 2,
+                    { baseline: "middle" },
+                  );
+                } else {
+                  // Draw main card background
+                  doc.setFillColor(253, 253, 254);
+                  doc.setDrawColor(200, 200, 200);
+                  doc.setLineWidth(0.5);
+                  doc.roundedRect(
+                    contentX,
+                    currentY,
+                    contentBoxWidth,
+                    contentBoxHeight,
+                    2,
+                    2,
+                    "FD",
+                  );
+
+                  // Only draw the horizontal header divider if there's content below it
+                  const isCompact =
+                    notesLines.length === 0 && processedImages.length === 0;
+                  if (!isCompact) {
+                    doc.line(
+                      contentX,
+                      currentY + headerHeight,
+                      contentX + contentBoxWidth,
+                      currentY + headerHeight,
+                    );
+                  }
+
+                  // Card Header Text
+                  doc.setFont("helvetica", "bold");
+                  doc.setFontSize(10.5);
+                  doc.setTextColor(40, 40, 40);
+
+                  const blockText = p.name.toUpperCase();
+                  const courseText = isPrep
+                    ? "PREP"
+                    : blockData?.course
+                      ? blockData.course.toUpperCase()
+                      : "";
+                  const roomText = isPrep
+                    ? ""
+                    : blockData?.room
+                      ? `ROOM ${blockData.room.toUpperCase()}`
+                      : "";
+
+                  const wBlock = Math.max(28, doc.getTextWidth(blockText) + 8);
+                  const wRoom = roomText
+                    ? Math.max(24, doc.getTextWidth(roomText) + 8)
+                    : 0;
+                  const wCourse = contentBoxWidth - wBlock - wRoom;
+                  const headerCenterY = currentY + headerHeight / 2;
+
+                  doc.text(blockText, contentX + 4, headerCenterY, {
+                    baseline: "middle",
+                  });
+                  doc.line(
+                    contentX + wBlock,
+                    currentY,
+                    contentX + wBlock,
+                    currentY + headerHeight,
+                  );
+
+                  doc.text(courseText, contentX + wBlock + 4, headerCenterY, {
+                    baseline: "middle",
+                  });
+
+                  if (roomText) {
+                    doc.line(
+                      contentX + wBlock + wCourse,
+                      currentY,
+                      contentX + wBlock + wCourse,
+                      currentY + headerHeight,
+                    );
+                    doc.text(
+                      roomText,
+                      contentX + wBlock + wCourse + 4,
+                      headerCenterY,
+                      { baseline: "middle" },
+                    );
+                  }
+
+                  // Render Notes
+                  let contentDrawY = currentY + headerHeight + 4.5;
+                  if (!isCompact && notesLines.length > 0) {
+                    doc.setFont("helvetica", "normal");
+                    doc.setFontSize(9.5);
+                    doc.setTextColor(60, 60, 60);
+                    doc.text(notesLines, contentX + 4, contentDrawY);
+                    contentDrawY += notesLines.length * 4.5 + 2;
+                  }
+
+                  // Render Images within flex layout
+                  if (!isCompact && processedImages.length > 0) {
+                    contentDrawY += 2;
+                    processedImages.forEach((pImg) => {
+                      const imgAbsX = contentX + 8 + pImg.relX;
+                      const imgAbsY = contentDrawY + pImg.relY;
+
+                      try {
+                        doc.addImage(
+                          pImg.dataUrl,
+                          pImg.format,
+                          imgAbsX,
+                          imgAbsY,
+                          pImg.w,
+                          pImg.h,
+                        );
+                      } catch (e) {
+                        console.warn("Image render failed", e);
+                      }
+
+                      // Draw strict bounding box for caption directly beneath image
+                      if (pImg.capLines.length > 0) {
+                        const boxY = imgAbsY + pImg.h + 1;
+
+                        doc.setFillColor(248, 248, 248);
+                        doc.setDrawColor(215, 215, 215);
+                        doc.setLineWidth(0.3);
+                        doc.rect(
+                          imgAbsX,
+                          boxY,
+                          pImg.w,
+                          pImg.capBoxHeight,
+                          "FD",
+                        );
+
+                        doc.setFont("helvetica", "italic");
+                        doc.setFontSize(8);
+                        doc.setTextColor(90, 90, 90);
+                        // Text is placed inside box using standard text baseline offsets
+                        doc.text(pImg.capLines, imgAbsX + 2, boxY + 3.5);
+                      }
+                    });
+                  }
+                }
+
+                currentY += totalRowHeight;
+              });
+
+              // --- FINAL NOTES RENDER ---
+              if (dayConfig.finalNotes) {
+                currentY += 4;
+
+                doc.setFontSize(9);
+                doc.setFont("helvetica", "bold");
+
+                const finalNotesLines = doc.splitTextToSize(
+                  dayConfig.finalNotes.trim(),
+                  pageWidth - margin * 2 - 10,
+                );
+                const notesBoxHeight = finalNotesLines.length * 4.5 + 1.5;
+
+                // Prevent cutoff
+                if (currentY + notesBoxHeight + 15 > pageHeight - margin) {
+                  doc.addPage();
+                  currentY = margin + 10;
+                }
+
+                // Match the exact red colors from General Notes
+                doc.setTextColor(228, 32, 37);
+                doc.text("FINAL NOTES", margin, currentY);
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(9.5);
+                doc.setTextColor(60, 60, 60);
+
+                doc.setDrawColor(228, 32, 37);
+                doc.setLineWidth(1);
+                doc.line(
+                  margin,
+                  currentY + 2.5,
+                  margin,
+                  currentY + 2.5 + notesBoxHeight,
+                );
+
+                doc.setFillColor(249, 249, 250);
+                doc.rect(
+                  margin + 1,
+                  currentY + 2.5,
+                  pageWidth - margin * 2 - 1,
+                  notesBoxHeight,
+                  "F",
+                );
+
+                doc.text(finalNotesLines, margin + 6, currentY + 6.2);
+              }
+
+              // Page Numbering Footer
+              const str = `Page ${index + 1} of ${daysData.length}`;
+              doc.setFontSize(8);
+              doc.setFont("helvetica", "normal");
+              doc.setTextColor(160, 160, 160);
+              doc.text(str, margin, pageHeight - 12);
+              doc.text(
+                "TOC Notes Generator",
+                pageWidth - margin,
+                pageHeight - 12,
+                { align: "right" },
+              );
+            });
+
+            return doc;
+          } catch (error) {
+            console.error("PDF Build failed:", error);
+            return null;
+          }
+        }, [daysData, teacherName, scriptsLoaded]);
+
+        // --- Handlers for PDF Action ---
+        const generatePDF = useCallback(
+          (download = false) => {
+            const doc = buildPDF();
+            if (!doc) return;
+
+            if (download) {
+              doc.save(`TOC_Notes_${daysData[0].date}.pdf`);
+            } else {
+              const arrayBuffer = doc.output("arraybuffer");
+              if (window.pdfjsLib) {
+                const loadingTask = window.pdfjsLib.getDocument({
+                  data: arrayBuffer,
+                });
+                loadingTask.promise
+                  .then((pdf) => {
+                    setPdfDoc(pdf);
+                    setPdfTotalPages(pdf.numPages);
+                    setPreviewPage((current) =>
+                      Math.min(current, pdf.numPages),
+                    );
+                  })
+                  .catch((err) => console.error("Error loading PDF", err));
+              }
+            }
+          },
+          [buildPDF, daysData],
+        );
+
+        // Debounced auto-preview
+        useEffect(() => {
+          if (!scriptsLoaded || appState !== "editing") return;
+          const timer = setTimeout(() => generatePDF(false), 500);
+          return () => clearTimeout(timer);
+        }, [daysData, teacherName, scriptsLoaded, appState, generatePDF]);
+
+        const currentDayData = daysData[currentDayIndex];
+        const currentSchedule = currentDayData
+          ? getScheduleForDate(currentDayData.date, currentDayData.absenceType)
+          : [];
+        const isSetupValid = teacherName.trim() !== "";
+
+        return (
+          <div className="flex flex-col md:flex-row h-screen w-full relative">
+            {/* Toast Notification */}
+            {toastMessage && (
+              <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] bg-[#18181A] text-white px-6 py-3.5 rounded-full shadow-2xl border border-[#2C2C2E] flex items-center gap-3 fade-up-enter text-sm font-medium tracking-wide">
+                <Icon
+                  name="Check"
+                  className="text-[#E42025] w-5 h-5 flex-shrink-0"
+                />
+                <span className="max-w-[80vw] sm:max-w-md text-center">
+                  {toastMessage}
+                </span>
+              </div>
+            )}
+
+            {/* LEFT PANE (Resizable) */}
+            <div
+              ref={sidebarRef}
+              className="resizable-sidebar flex-shrink-0 bg-[#141415] border-r border-[#2C2C2E] h-full overflow-y-auto flex flex-col shadow-2xl z-20 relative"
+              style={{ width: `${sidebarWidth}px` }}
+            >
+              {/* Right Border Resize Handle */}
+              <div
+                className="resize-handle absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize hover:bg-[#E42025]/50 active:bg-[#E42025] transition-colors z-50"
+                onMouseDown={handleMouseDown}
+              />
+
+              <div className="relative h-40 bg-gradient-to-br from-neutral-800 to-[#111] flex-shrink-0 overflow-hidden">
+                <div
+                  className="absolute inset-0 opacity-20"
+                  style={{
+                    backgroundImage:
+                      "radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0)",
+                    backgroundSize: "20px 20px",
+                  }}
+                ></div>
+                <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-[#141415] to-transparent"></div>
+                <div className="absolute bottom-5 left-6 flex items-end gap-4">
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-2">
+                      <Icon name="FileText" className="text-[#E42025]" /> TOC
+                      Notes
+                    </h1>
+                    <div className="flex items-center gap-3 mt-1.5">
+                      <p className="text-[#E42025] font-medium text-sm">
+                        &gt; Jonathan Kung
+                      </p>
+                      <a
+                        href="https://ko-fi.com/coolpuddytat"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Buy me a coffee ☕"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold bg-[#1C1C1E] hover:bg-[#2C2C2E] text-neutral-300 hover:text-white rounded-md transition-colors border border-[#2C2C2E] shadow-sm"
+                      >
+                        ☕ Tip me
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6 flex-1 pb-40">
+                {appState === "idle" && (
+                  <div className="h-full flex flex-col items-center justify-center text-center px-4 fade-up-enter opacity-60 mt-10">
+                    <div className="w-20 h-20 rounded-full bg-[#1C1C1E] border-2 border-dashed border-[#2C2C2E] flex items-center justify-center mb-6">
+                      <Icon
+                        name="CalendarDays"
+                        className="text-[#E42025] w-8 h-8 opacity-80"
+                      />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2 tracking-wide">
+                      Ready to Generate
+                    </h3>
+                    <p className="text-neutral-500 text-sm max-w-xs">
+                      Tap the red + button in the bottom left to create a new
+                      absence plan.
+                    </p>
+                  </div>
+                )}
+
+                {appState === "setup" && (
+                  <div className="space-y-6 fade-up-enter">
+                    <div className="flex items-center justify-between border-b border-[#2C2C2E] pb-4">
+                      <h2 className="text-lg font-bold text-white tracking-tight">
+                        Initial Setup
+                      </h2>
+                      <span className="text-xs font-black px-3 py-1.5 bg-[#E42025]/20 text-[#E42025] rounded-full uppercase tracking-widest">
+                        {selectedAbsenceType}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 ml-2">
+                          Your Name <span className="text-[#E42025]">*</span>
+                        </label>
+                        <div className="relative">
+                          <Icon
+                            name="User"
+                            className="absolute left-3 top-3.5 w-4 h-4 text-neutral-500"
+                          />
+                          <input
+                            type="text"
+                            value={teacherName}
+                            onChange={(e) => setTeacherName(e.target.value)}
+                            className="w-full pl-10 px-5 py-3.5 rounded-2xl path-input text-sm"
+                            placeholder=""
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 ml-2">
+                        {selectedAbsenceType === "Multi-Day"
+                          ? "Start Date"
+                          : "Date of Absence"}
+                      </label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) =>
+                          setStartDate(adjustToWeekday(e.target.value))
+                        }
+                        className="w-full px-5 py-3.5 rounded-2xl path-input text-sm"
+                      />
+                    </div>
+
+                    {selectedAbsenceType === "Multi-Day" && (
+                      <div className="fade-up-enter">
+                        <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 ml-2">
+                          End Date
+                        </label>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) =>
+                            setEndDate(adjustToWeekday(e.target.value))
+                          }
+                          min={startDate}
+                          className="w-full px-5 py-3.5 rounded-2xl path-input text-sm"
+                        />
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleStartConfiguration}
+                      disabled={!isSetupValid}
+                      className={`w-full mt-6 bg-[#E42025] hover:bg-red-600 text-white font-bold py-4 rounded-2xl shadow-lg transition-all flex justify-center items-center gap-2 transform active:scale-95 ${!isSetupValid ? "opacity-40 cursor-not-allowed hover:bg-[#E42025] active:scale-100" : ""}`}
+                    >
+                      Start Writing Notes{" "}
+                      <Icon name="Check" className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
+
+                {appState === "editing" && currentDayData && (
+                  <div
+                    className="space-y-6 fade-up-enter"
+                    key={currentDayIndex}
+                  >
+                    <div className="bg-[#1C1C1E] p-4 rounded-2xl border border-[#2C2C2E] flex justify-between items-center shadow-sm">
+                      <div>
+                        <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mb-1">
+                          Configuring Date
+                        </div>
+                        <div className="text-white font-semibold text-sm flex items-center gap-2">
+                          <Icon
+                            name="CalendarDays"
+                            className="w-4 h-4 text-[#E42025]"
+                          />{" "}
+                          {currentDayData.date}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mb-1">
+                          Day
+                        </div>
+                        <div className="text-white font-black bg-neutral-800 px-3 py-1 rounded-lg text-sm">
+                          {currentDayIndex + 1} of {daysData.length}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between items-end mb-2 ml-2">
+                        <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+                          General Notes
+                        </label>
+                        {currentDayIndex > 0 && (
+                          <button
+                            onClick={copyPreviousDay}
+                            className="text-[10px] font-bold text-[#E42025] uppercase tracking-wider hover:text-red-400 transition-colors"
+                          >
+                            Copy Previous
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        value={currentDayData.generalNotes}
+                        onChange={(e) =>
+                          handleDayChange("generalNotes", e.target.value)
+                        }
+                        rows="3"
+                        className="w-full px-5 py-4 rounded-2xl path-input text-sm resize-y"
+                        placeholder="E.g. Please collect the assignments on my desk..."
+                      ></textarea>
+                    </div>
+
+                    <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-widest border-b border-[#2C2C2E] pb-2 mt-8 flex items-center gap-2">
+                      <Icon name="Clock" className="w-4 h-4" /> Block Details
+                    </h2>
+
+                    <div className="space-y-4">
+                      {currentSchedule.map((p) => {
+                        const blockData = currentDayData.blocks[p.id];
+                        if (!blockData && !p.isFixed) return null;
+
+                        if (p.isFixed) {
+                          return (
+                            <div
+                              key={p.id}
+                              className="p-4 rounded-2xl bg-[#1C1C1E]/50 border border-[#2C2C2E] flex justify-between items-center opacity-60"
+                            >
+                              <div>
+                                <h3 className="font-bold text-neutral-300 text-xl">
+                                  {p.name}
+                                </h3>
+                                <p className="text-xs text-neutral-500">
+                                  {p.start} - {p.end}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        const isPrep = blockData.isPrep;
+
+                        return (
+                          <div
+                            key={p.id}
+                            className={`p-5 rounded-2xl transition-all duration-300 ${isPrep ? "bg-[#18181A] border border-[#222]" : "bg-[#1C1C1E] border border-[#2C2C2E] shadow-lg"}`}
+                          >
+                            <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+                              <div>
+                                <h3
+                                  className={`font-bold text-xl ${isPrep ? "text-neutral-500" : "text-white"}`}
+                                >
+                                  {p.name}
+                                </h3>
+                                <p className="text-xs text-neutral-500">
+                                  {p.start} - {p.end}
+                                </p>
+                              </div>
+
+                              <label className="flex items-center cursor-pointer group">
+                                <span
+                                  className={`mr-3 text-xs font-bold uppercase tracking-wider transition-colors ${isPrep ? "text-[#E42025]" : "text-neutral-600 group-hover:text-neutral-400"}`}
+                                >
+                                  Prep
+                                </span>
+                                <div className="relative">
+                                  <input
+                                    type="checkbox"
+                                    className="sr-only toggle-checkbox"
+                                    checked={isPrep}
+                                    onChange={(e) =>
+                                      handleBlockChange(
+                                        p.id,
+                                        "isPrep",
+                                        e.target.checked,
+                                      )
+                                    }
+                                  />
+                                  <div className="block w-10 h-6 bg-neutral-800 rounded-full transition-colors border border-neutral-700"></div>
+                                  <div
+                                    className={`absolute left-1 top-1 bg-neutral-400 w-4 h-4 rounded-full transition-all ${isPrep ? "transform translate-x-4 bg-white" : ""}`}
+                                  ></div>
+                                </div>
+                              </label>
+                            </div>
+
+                            <div className="space-y-3 mt-4">
+                              {!isPrep && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-1">
+                                  <div className="relative">
+                                    <Icon
+                                      name="FileText"
+                                      className="absolute left-3 top-3.5 w-4 h-4 text-neutral-600"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={blockData.course}
+                                      onChange={(e) =>
+                                        handleBlockChange(
+                                          p.id,
+                                          "course",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full pl-9 px-4 py-3 rounded-xl path-input text-sm"
+                                      placeholder="Course Name"
+                                    />
+                                  </div>
+                                  <div className="relative">
+                                    <Icon
+                                      name="MapPin"
+                                      className="absolute left-3 top-3.5 w-4 h-4 text-neutral-600"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={blockData.room}
+                                      onChange={(e) =>
+                                        handleBlockChange(
+                                          p.id,
+                                          "room",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full pl-9 px-4 py-3 rounded-xl path-input text-sm"
+                                      placeholder="Room #"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                              <textarea
+                                value={blockData.notes}
+                                onChange={(e) =>
+                                  handleBlockChange(
+                                    p.id,
+                                    "notes",
+                                    e.target.value,
+                                  )
+                                }
+                                rows="3"
+                                className="w-full px-4 pt-3 pb-1 rounded-xl path-input text-sm resize-y"
+                                placeholder="Lesson plans, activities, etc."
+                              ></textarea>
+
+                              {/* --- Image Attachments UI with Sizing --- */}
+                              {!isPrep && (
+                                <div className="mt-3 space-y-3">
+                                  {blockData.images &&
+                                    blockData.images.length > 0 && (
+                                      <div className="space-y-3">
+                                        {blockData.images.map((img) => (
+                                          <div
+                                            key={img.id}
+                                            className="relative bg-[#111] p-3 rounded-xl border border-[#2C2C2E] flex flex-col sm:flex-row gap-4 shadow-inner"
+                                          >
+                                            <button
+                                              onClick={() =>
+                                                removeImage(p.id, img.id)
+                                              }
+                                              className="absolute -top-2.5 -right-2.5 bg-red-500 text-white p-1.5 rounded-full shadow-lg hover:bg-red-600 transition-colors z-10"
+                                            >
+                                              <Icon
+                                                name="Trash"
+                                                className="w-3.5 h-3.5"
+                                              />
+                                            </button>
+                                            <div className="w-full sm:w-28 h-20 flex-shrink-0 bg-neutral-900 rounded-lg overflow-hidden flex items-center justify-center border border-neutral-800">
+                                              <img
+                                                src={img.dataUrl}
+                                                className="max-w-full max-h-full object-contain"
+                                                alt="Attached preview"
+                                              />
+                                            </div>
+                                            <div className="flex-1 flex flex-col justify-center">
+                                              <input
+                                                type="text"
+                                                value={img.caption}
+                                                onChange={(e) =>
+                                                  handleImageCaptionChange(
+                                                    p.id,
+                                                    img.id,
+                                                    e.target.value,
+                                                  )
+                                                }
+                                                placeholder="Add a caption..."
+                                                className="w-full bg-transparent border-b border-neutral-700 focus:border-[#E42025] text-sm text-neutral-300 px-1 py-1.5 outline-none transition-colors"
+                                              />
+                                              <div className="flex items-center gap-1.5 mt-2.5">
+                                                <span className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mr-1">
+                                                  Size:
+                                                </span>
+                                                {["S", "M", "L"].map((sz) => (
+                                                  <button
+                                                    key={sz}
+                                                    onClick={() =>
+                                                      handleImageSizeChange(
+                                                        p.id,
+                                                        img.id,
+                                                        sz,
+                                                      )
+                                                    }
+                                                    className={`px-2.5 py-1 text-[10px] font-bold rounded flex items-center justify-center transition-colors ${img.size === sz ? "bg-neutral-600 text-white shadow-sm" : "bg-[#18181A] text-neutral-400 hover:bg-neutral-700 hover:text-white border border-[#2C2C2E]"}`}
+                                                  >
+                                                    {sz}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  <label className="inline-flex items-center gap-2 px-3 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-bold uppercase tracking-wider rounded-lg cursor-pointer transition-colors border border-neutral-700 shadow-sm w-fit">
+                                    <Icon name="Image" className="w-4 h-4" />
+                                    Add Image
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      multiple
+                                      className="hidden"
+                                      onChange={(e) =>
+                                        handleImageUpload(p.id, e)
+                                      }
+                                    />
+                                  </label>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* --- Final Notes Section --- */}
+                    <div className="mt-8 pt-6 border-t border-[#2C2C2E]">
+                      <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2 ml-2">
+                        Final Notes
+                      </label>
+                      <textarea
+                        value={currentDayData.finalNotes || ""}
+                        onChange={(e) =>
+                          handleDayChange("finalNotes", e.target.value)
+                        }
+                        rows="3"
+                        className="w-full px-5 py-4 rounded-2xl path-input text-sm resize-y"
+                        placeholder="Thank you for covering! You can reach me at 555-1234 or email@example.com."
+                      ></textarea>
+                    </div>
+
+                    <div className="pt-6 mt-6 border-t border-[#2C2C2E] flex flex-col gap-4">
+                      <div className="flex gap-4">
+                        {currentDayIndex > 0 && (
+                          <button
+                            onClick={() => navigateDay(-1)}
+                            className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white font-semibold py-3.5 rounded-2xl transition-colors text-sm"
+                          >
+                            &larr; Previous Day
+                          </button>
+                        )}
+                        {currentDayIndex < daysData.length - 1 && (
+                          <button
+                            onClick={() => navigateDay(1)}
+                            className="flex-1 bg-[#242426] hover:bg-[#333336] text-white font-bold py-3.5 rounded-2xl border border-[#333336] transition-colors text-sm"
+                          >
+                            Next Day &rarr;
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="md:hidden flex gap-3 w-full">
+                        <button
+                          onClick={() => generatePDF(true)}
+                          className="w-full bg-[#E42025] hover:bg-red-600 text-white font-bold py-4 rounded-2xl shadow-[0_8px_16px_rgba(228,32,37,0.3)] transition-all flex items-center justify-center gap-2"
+                        >
+                          <Icon name="Download" className="w-5 h-5" /> Save PDF
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* RIGHT PANE (PDF Preview) */}
+            <div className="hidden md:flex flex-col flex-1 bg-neutral-900 border-l border-neutral-800 z-10 h-full overflow-hidden">
+              <div className="h-14 bg-[#141415] text-white flex items-center justify-between px-6 shadow-md border-b border-[#2C2C2E] flex-shrink-0 z-10">
+                <div className="flex items-center gap-2 text-sm font-bold tracking-wide">
+                  <Icon name="FileText" className="w-4 h-4 text-neutral-400" />{" "}
+                  Print Preview
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => generatePDF(true)}
+                    className="bg-[#E42025] hover:bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+                  >
+                    <Icon name="Download" className="w-3 h-3" /> Save PDF
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 w-full relative flex flex-col bg-neutral-950 overflow-hidden">
+                {!scriptsLoaded ? (
+                  <div className="text-neutral-500 font-medium m-auto">
+                    Loading PDF Engine...
+                  </div>
+                ) : appState !== "editing" ? (
+                  <div className="text-neutral-600 font-medium m-auto border-2 border-dashed border-neutral-800 px-8 py-12 rounded-2xl">
+                    A live preview will appear here during configuration.
+                  </div>
+                ) : !pdfDoc ? (
+                  <div className="text-neutral-500 font-medium m-auto">
+                    Generating Preview...
+                  </div>
+                ) : (
+                  <>
+                    {/* PREVIEW CONTROLS WITH RANGE SLIDER */}
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center justify-between w-[90%] max-w-[500px] bg-[#1C1C1E]/90 backdrop-blur rounded-xl p-2 px-4 border border-[#2C2C2E] shadow-2xl">
+                      <div className="flex items-center gap-2 sm:gap-4 border-r border-neutral-700 pr-4">
+                        <button
+                          onClick={() => scrollToPage(previewPage - 1)}
+                          disabled={previewPage <= 1}
+                          className="p-1.5 rounded-lg bg-neutral-800 text-white disabled:opacity-30 hover:bg-neutral-700 transition-colors"
+                        >
+                          <Icon name="ChevronLeft" className="w-4 h-4" />
+                        </button>
+                        <span className="text-xs font-bold text-neutral-400 tracking-wider uppercase whitespace-nowrap">
+                          Page {previewPage} of {pdfTotalPages}
+                        </span>
+                        <button
+                          onClick={() => scrollToPage(previewPage + 1)}
+                          disabled={previewPage >= pdfTotalPages}
+                          className="p-1.5 rounded-lg bg-neutral-800 text-white disabled:opacity-30 hover:bg-neutral-700 transition-colors"
+                        >
+                          <Icon name="ChevronRight" className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 pl-2 flex-1 justify-end">
+                        <button
+                          onClick={() =>
+                            setPreviewZoom((z) => Math.max(50, z - 10))
+                          }
+                          className="p-1 text-neutral-400 hover:text-white transition-colors"
+                        >
+                          <Icon name="ZoomOut" className="w-4 h-4" />
+                        </button>
+
+                        <input
+                          type="range"
+                          min="50"
+                          max="250"
+                          step="10"
+                          value={previewZoom}
+                          onChange={(e) =>
+                            setPreviewZoom(Number(e.target.value))
+                          }
+                          className="w-20 sm:w-28 mx-1"
+                        />
+
+                        <button
+                          onClick={() =>
+                            setPreviewZoom((z) => Math.min(250, z + 10))
+                          }
+                          className="p-1 text-neutral-400 hover:text-white transition-colors"
+                        >
+                          <Icon name="ZoomIn" className="w-4 h-4" />
+                        </button>
+                        <span className="text-xs font-bold text-neutral-400 tracking-wider w-10 text-right">
+                          {previewZoom}%
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* CONTINUOUS SCROLL CONTAINER */}
+                    <div
+                      ref={previewContainerRef}
+                      className="flex-1 w-full overflow-auto custom-scrollbar relative"
+                      style={{ cursor: "grab" }}
+                      onScroll={handlePreviewScroll}
+                      onMouseDown={handlePreviewMouseDown}
+                      onMouseMove={handlePreviewMouseMove}
+                      onMouseUp={handlePreviewMouseUp}
+                      onMouseLeave={handlePreviewMouseUp}
+                      onTouchStart={handleTouchStart}
+                      onTouchMove={handleTouchMove}
+                      onTouchEnd={handleTouchEnd}
+                    >
+                      {/* Inner wrapper expands to fit wide pages so horizontal scroll works correctly */}
+                      <div className="flex flex-col items-center gap-8 pt-24 pb-20 min-w-max mx-auto px-8">
+                        {Array.from({ length: pdfTotalPages }).map((_, i) => (
+                          <div
+                            key={i + 1}
+                            id={`pdf-page-${i + 1}`}
+                            className="pdf-page-container relative flex justify-center"
+                          >
+                            <PdfPage
+                              pdfDoc={pdfDoc}
+                              pageNumber={i + 1}
+                              zoom={previewZoom}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* --- PATH RADIAL MENU --- */}
+            <div className="fixed bottom-6 left-6 lg:bottom-8 lg:left-8 z-[100]">
+              <div
+                className={`fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${menuOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+                onClick={() => setMenuOpen(false)}
+              ></div>
+
+              <div className="relative z-10 w-14 h-14 sm:w-16 sm:h-16">
+                <button
+                  onClick={() => handleMenuSelect("Full")}
+                  className={`absolute left-1 sm:left-2 top-1 sm:top-2 w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-[0_8px_16px_rgba(0,0,0,0.4)] text-neutral-800 spring-transition hover:scale-110 group ${menuOpen ? "opacity-100" : "opacity-0 scale-50 pointer-events-none"}`}
+                  style={{
+                    transform: menuOpen
+                      ? "translate(0px, -115px)"
+                      : "translate(0,0) scale(0.5)",
+                    transitionDelay: "0.0s",
+                  }}
+                >
+                  <Icon name="Sun" className="w-5 h-5" />
+                  <div
+                    className="absolute top-1/2 left-1/2 pointer-events-none"
+                    style={{ transform: "rotate(-90deg)" }}
+                  >
+                    <span className="absolute top-1/2 -translate-y-1/2 left-[36px] bg-neutral-900 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-md shadow-lg hidden sm:block whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all duration-200">
+                      Full Day
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleMenuSelect("AM")}
+                  className={`absolute left-1 sm:left-2 top-1 sm:top-2 w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-[0_8px_16px_rgba(0,0,0,0.4)] text-neutral-800 spring-transition hover:scale-110 group ${menuOpen ? "opacity-100" : "opacity-0 scale-50 pointer-events-none"}`}
+                  style={{
+                    transform: menuOpen
+                      ? "translate(60px, -95px)"
+                      : "translate(0,0) scale(0.5)",
+                    transitionDelay: "0.05s",
+                  }}
+                >
+                  <Icon name="Sunrise" className="w-5 h-5" />
+                  <div
+                    className="absolute top-1/2 left-1/2 pointer-events-none"
+                    style={{ transform: "rotate(-60deg)" }}
+                  >
+                    <span className="absolute top-1/2 -translate-y-1/2 left-[36px] bg-neutral-900 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-md shadow-lg hidden sm:block whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all duration-200">
+                      Morning
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleMenuSelect("PM")}
+                  className={`absolute left-1 sm:left-2 top-1 sm:top-2 w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-[0_8px_16px_rgba(0,0,0,0.4)] text-neutral-800 spring-transition hover:scale-110 group ${menuOpen ? "opacity-100" : "opacity-0 scale-50 pointer-events-none"}`}
+                  style={{
+                    transform: menuOpen
+                      ? "translate(100px, -55px)"
+                      : "translate(0,0) scale(0.5)",
+                    transitionDelay: "0.1s",
+                  }}
+                >
+                  <Icon name="Sunset" className="w-5 h-5" />
+                  <div
+                    className="absolute top-1/2 left-1/2 pointer-events-none"
+                    style={{ transform: "rotate(-30deg)" }}
+                  >
+                    <span className="absolute top-1/2 -translate-y-1/2 left-[36px] bg-neutral-900 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-md shadow-lg hidden sm:block whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all duration-200">
+                      Afternoon
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleMenuSelect("Multi-Day")}
+                  className={`absolute left-1 sm:left-2 top-1 sm:top-2 w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-[0_8px_16px_rgba(0,0,0,0.4)] text-[#E42025] spring-transition hover:scale-110 group ${menuOpen ? "opacity-100" : "opacity-0 scale-50 pointer-events-none"}`}
+                  style={{
+                    transform: menuOpen
+                      ? "translate(115px, 0px)"
+                      : "translate(0,0) scale(0.5)",
+                    transitionDelay: "0.15s",
+                  }}
+                >
+                  <Icon name="CalendarDays" className="w-5 h-5" />
+                  <div
+                    className="absolute top-1/2 left-1/2 pointer-events-none"
+                    style={{ transform: "rotate(0deg)" }}
+                  >
+                    <span className="absolute top-1/2 -translate-y-1/2 left-[36px] bg-neutral-900 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-md shadow-lg hidden sm:block whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all duration-200">
+                      Multi-Day
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setMenuOpen(!menuOpen)}
+                  className={`absolute inset-0 w-14 h-14 sm:w-16 sm:h-16 bg-[#E42025] rounded-full flex items-center justify-center shadow-[0_10px_20px_rgba(228,32,37,0.4)] relative z-20 spring-transition hover:scale-105 active:scale-95`}
+                >
+                  <Icon
+                    name="Plus"
+                    className={`text-white w-7 h-7 spring-transition ${menuOpen ? "rotate-45" : ""}`}
+                    strokeWidth={3}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
