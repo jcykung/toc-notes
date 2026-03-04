@@ -592,11 +592,12 @@
 
     // --- GumSlider: Dewdrop gum stuck to left wall ---
     // Left wall = anchor. Squish left = fat blob against wall. Stretch right = dewdrop with narrow tail.
-    const GumSlider = ({ value, min, max, step = 1, onChange, disabled, showLabels = true, snapPoints = [] }) => {
+    const GumSlider = ({ value, min, max, step = 1, onChange, disabled, showLabels = true, snapPoints = [], mobileSize = false }) => {
       const toT = (v) => (v - min) / (max - min); // value → 0..1
       const t = toT(value);
 
-      const H = 36, cy = H / 2; // fixed container height, vertically centered
+      const H = mobileSize ? 52 : 36;
+      const cy = H / 2; // fixed container height, vertically centered
       const WALL_X = 5;          // left wall x position
 
       // Measure true pixel width of track container
@@ -678,8 +679,9 @@
 
       // Right blob center X: spans [WALL_X + rH_min, W - rH_max]
       // We always leave enough room so the blob never clips the wall or right edge
-      const rH = 3 + 5.5 * vt;        // blob radius: 3px at squish → 8.5px at stretch (half of before)
-      const lH = 14 - 12 * vt;       // wall attachment half-height: 14px squish → 2px stretch
+      const sz = mobileSize ? 1.5 : 1.0;
+      const rH = (3 + 5.5 * vt) * sz;
+      const lH = (14 - 12 * vt) * sz;
 
       // Position the blob center so:
       //   • at t=0 it sits flush against the wall (rx = WALL_X + rH)
@@ -723,7 +725,7 @@
       const snapNotchX = WALL_X + snapFrac * (W - WALL_X - 4);
 
       return (
-        <div className="flex items-center gap-2 bg-[#1C1C1E] border border-[#2C2C2E] rounded-lg px-3 py-1.5 flex-1 min-w-[200px] max-w-[300px]">
+        <div className={`flex items-center gap-2 bg-[#1C1C1E] border border-[#2C2C2E] rounded-lg px-3 py-1.5 ${mobileSize ? 'w-full max-w-sm' : 'flex-1 min-w-[200px] max-w-[300px]'}`}>
           {showLabels && <span className="text-[9px] font-black text-neutral-500 uppercase tracking-widest whitespace-nowrap select-none">Squish</span>}
 
           <div ref={containerRef} className="relative flex-1" style={{ height: `${H}px` }}>
@@ -1945,7 +1947,10 @@
         return () => clearTimeout(timer);
       }, [daysData, teacherName, scriptsLoaded, appState, generatePDF]);
 
-      // Pinch-to-zoom on mobile preview — CSS transform only, never re-renders PDF
+      // Pinch-to-zoom on mobile preview — drives DOM transform directly (no React re-render per frame)
+      const mobileContentRef = useRef(null);
+      const pinchZoomRef = useRef(mobileViewZoom); // live zoom, updated every frame
+
       useEffect(() => {
         const el = mobileScrollRef.current;
         if (!el || !mobilePreviewOpen) return;
@@ -1958,26 +1963,33 @@
             mobilePinchRef.current = {
               active: true,
               startDist: Math.hypot(dx, dy),
-              startZoom: mobileViewZoom,
+              startZoom: pinchZoomRef.current,
             };
           }
         };
 
         const onTouchMove = (e) => {
-          if (e.touches.length === 2) {
+          if (e.touches.length === 2 && mobilePinchRef.current.active) {
             e.preventDefault();
-            if (!mobilePinchRef.current.active) return;
             const dx = e.touches[0].clientX - e.touches[1].clientX;
             const dy = e.touches[0].clientY - e.touches[1].clientY;
             const dist = Math.hypot(dx, dy);
             const ratio = dist / mobilePinchRef.current.startDist;
             const next = Math.min(3.0, Math.max(0.5, mobilePinchRef.current.startZoom * ratio));
-            setMobileViewZoom(next);
+            pinchZoomRef.current = next;
+            // Apply directly to DOM — no React state, no re-render lag
+            if (mobileContentRef.current) {
+              mobileContentRef.current.style.transform = `scale(${next})`;
+            }
           }
         };
 
         const onTouchEnd = (e) => {
-          if (e.touches.length < 2) mobilePinchRef.current.active = false;
+          if (e.touches.length < 2) {
+            mobilePinchRef.current.active = false;
+            // Sync final zoom value back to React state once gesture ends
+            setMobileViewZoom(pinchZoomRef.current);
+          }
         };
 
         el.addEventListener("touchstart", onTouchStart, { passive: false });
@@ -1988,7 +2000,8 @@
           el.removeEventListener("touchmove", onTouchMove);
           el.removeEventListener("touchend", onTouchEnd);
         };
-      }, [mobilePreviewOpen, mobileViewZoom]);
+        // Only re-attach when modal opens/closes — NOT on every zoom tick
+      }, [mobilePreviewOpen]);
 
       // Debounced mobile scale preview — cancels any in-flight task before starting a new one
       useEffect(() => {
@@ -2584,11 +2597,12 @@
               </div>
 
               {/* Scale Tool Bar */}
-              <div className="flex-shrink-0 bg-[#1C1C1E] border-b border-[#2C2C2E] flex items-center px-4 py-2 gap-2">
+              <div className="flex-shrink-0 bg-[#1C1C1E] border-b border-[#2C2C2E] flex items-center justify-center px-6 py-3">
                 <GumSlider
                   value={Math.round(layoutScale * 100)}
                   min={75} max={125} step={2}
                   snapPoints={[100]}
+                  mobileSize={true}
                   onChange={(e) => {
                     const newScale = Number(e.target.value) / 100;
                     setLayoutScale(newScale);
@@ -2621,11 +2635,11 @@
                   </div>
                 ) : mobilePreviewDoc ? (
                   <div
+                    ref={mobileContentRef}
                     className="flex flex-col items-center gap-6 py-6 px-4"
                     style={{
                       transform: `scale(${mobileViewZoom})`,
                       transformOrigin: "top center",
-                      transition: "transform 0.05s linear",
                     }}
                   >
                     {Array.from({ length: mobilePreviewTotalPages }).map((_, i) => (
