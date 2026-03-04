@@ -1109,23 +1109,13 @@
             const useSingleLine = layoutScale < 0.88;
 
             if (useSingleLine) {
-              // Single-line badge: "MON · JAN 6, 2025 · TEACHER NAME"
+              // Single-line: plain text, no box
               const badgeText = `${dayStr} · ${dateFormatted} · ${teacherStrFormatted}`;
               const badgeFontSize = Math.max(7, 8 * layoutScale);
               doc.setFontSize(badgeFontSize);
-              const wBadge = doc.getTextWidth(badgeText);
-              const badgePadX = 5;
-              const badgeH = Math.max(6, 10 * layoutScale);
-              const badgeX = pageWidth - margin - wBadge - badgePadX * 2;
-              const badgeY = titleY - badgeH * 0.85;
-
-              doc.setFillColor(255, 255, 255);
-              doc.setDrawColor(220, 220, 225);
-              doc.setLineWidth(0.4);
-              doc.roundedRect(badgeX, badgeY, wBadge + badgePadX * 2, badgeH, 1.5, 1.5, "FD");
-
-              doc.setTextColor(40, 40, 40);
-              doc.text(badgeText, badgeX + badgePadX, badgeY + badgeH / 2, { baseline: "middle" });
+              const textY = titleY - badgeFontSize * 0.2 / doc.internal.scaleFactor;
+              doc.setTextColor(100, 100, 100);
+              doc.text(badgeText, pageWidth - margin, textY, { align: "right", baseline: "middle" });
             } else {
               // Two-row badge with day panel + date/teacher panel
               doc.setFontSize(dateSize);
