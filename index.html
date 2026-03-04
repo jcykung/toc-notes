@@ -175,7 +175,7 @@
       field-sizing: content;
     }
 
-    /* Scale Slider - visually distinct from the zoom slider */
+    /* Scale Slider - custom styled to match app theme */
     .scale-slider {
       -webkit-appearance: none;
       background: transparent;
@@ -183,32 +183,45 @@
 
     .scale-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
-      height: 20px;
-      width: 8px;
-      border-radius: 3px;
-      background: linear-gradient(160deg, #38bdf8, #0284c7);
+      height: 18px;
+      width: 18px;
+      border-radius: 50%;
+      background: #e5e5e5;
       cursor: pointer;
-      margin-top: -8px;
-      box-shadow: 0 2px 8px rgba(14, 165, 233, 0.5);
-      border: 1.5px solid rgba(255, 255, 255, 0.25);
-      transition: box-shadow 0.2s;
+      margin-top: -7px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+      border: 2px solid rgba(255, 255, 255, 0.15);
+      transition: background 0.15s;
     }
 
     .scale-slider::-webkit-slider-thumb:hover {
-      box-shadow: 0 2px 14px rgba(14, 165, 233, 0.8);
+      background: #ffffff;
     }
 
     .scale-slider::-webkit-slider-runnable-track {
       width: 100%;
       height: 4px;
       cursor: pointer;
-      background: #1e3a4a;
+      background: #333336;
       border-radius: 2px;
-      border: 1px solid #0ea5e940;
     }
 
     .scale-slider:focus {
       outline: none;
+    }
+
+    /* Desktop gum knob — hides native thumb, we draw our own */
+    .scale-slider-hidden-thumb::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .scale-slider-hidden-thumb::-webkit-slider-runnable-track {
+      background: transparent;
+      height: 4px;
     }
   </style>
 </head>
@@ -510,67 +523,261 @@
     // --- Single PDF Page Component ---
     const PdfPage = ({ pdfDoc, pageNumber, zoom }) => {
       const canvasRef = useRef(null);
-      const [isRendering, setIsRendering] = useState(false);
+      const renderingRef = useRef(false);
+      const pendingRef = useRef(null);
 
       useEffect(() => {
-        let renderTask = null;
-        let isActive = true;
+        // If already rendering, queue this request; it will run when current finishes
+        const request = { pdfDoc, pageNumber, zoom };
 
-        const renderPage = async () => {
-          if (!pdfDoc || !canvasRef.current) return;
-          setIsRendering(true);
-
+        const doRender = async (req) => {
+          if (!req.pdfDoc || !canvasRef.current) return;
+          renderingRef.current = true;
           try {
-            const page = await pdfDoc.getPage(pageNumber);
-            if (!isActive) return;
-
-            const unscaledViewport = page.getViewport({ scale: zoom / 100 });
+            const page = await req.pdfDoc.getPage(req.pageNumber);
+            const viewport = page.getViewport({ scale: req.zoom / 100 });
             const outputScale = window.devicePixelRatio || 1;
 
-            const canvas = canvasRef.current;
-            const context = canvas.getContext("2d");
+            // Render to offscreen canvas — never touch the visible canvas until done
+            const offscreen = document.createElement("canvas");
+            offscreen.width = Math.floor(viewport.width * outputScale);
+            offscreen.height = Math.floor(viewport.height * outputScale);
+            const ctx = offscreen.getContext("2d");
+            const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
 
-            canvas.width = Math.floor(unscaledViewport.width * outputScale);
-            canvas.height = Math.floor(unscaledViewport.height * outputScale);
-            canvas.style.width = Math.floor(unscaledViewport.width) + "px";
-            canvas.style.height = Math.floor(unscaledViewport.height) + "px";
+            const task = page.render({ canvasContext: ctx, transform, viewport });
+            await task.promise;
 
-            const transform =
-              outputScale !== 1
-                ? [outputScale, 0, 0, outputScale, 0, 0]
-                : null;
-
-            const renderContext = {
-              canvasContext: context,
-              transform: transform,
-              viewport: unscaledViewport,
-            };
-
-            renderTask = page.render(renderContext);
-            await renderTask.promise;
+            // Only swap onto visible canvas if this is still the latest request
+            if (pendingRef.current === null && canvasRef.current) {
+              const canvas = canvasRef.current;
+              canvas.width = offscreen.width;
+              canvas.height = offscreen.height;
+              canvas.style.width = Math.floor(viewport.width) + "px";
+              canvas.style.height = Math.floor(viewport.height) + "px";
+              canvas.getContext("2d").drawImage(offscreen, 0, 0);
+            }
           } catch (e) {
             if (e.name !== "RenderingCancelledException") {
               console.error(`PDF Render Error on page ${pageNumber}`, e);
             }
           } finally {
-            if (isActive) setIsRendering(false);
+            renderingRef.current = false;
+            // If a newer request queued up while we were rendering, run it now
+            if (pendingRef.current) {
+              const next = pendingRef.current;
+              pendingRef.current = null;
+              doRender(next);
+            }
           }
         };
 
-        renderPage();
-
-        return () => {
-          isActive = false;
-          if (renderTask) renderTask.cancel();
-        };
+        if (renderingRef.current) {
+          // Coalesce: replace any pending request with the latest one
+          pendingRef.current = request;
+        } else {
+          pendingRef.current = null;
+          doRender(request);
+        }
       }, [pdfDoc, pageNumber, zoom]);
 
       return (
         <canvas
           ref={canvasRef}
-          className="shadow-2xl bg-white transition-opacity duration-200 shrink-0"
-          style={{ opacity: isRendering ? 0.7 : 1 }}
+          className="shadow-2xl bg-white shrink-0"
         />
+      );
+    };
+
+
+    // --- GumSlider: Dewdrop gum stuck to left wall ---
+    // Left wall = anchor. Squish left = fat blob against wall. Stretch right = dewdrop with narrow tail.
+    const GumSlider = ({ value, min, max, step = 1, onChange, disabled, showLabels = true, snapPoints = [] }) => {
+      const toT = (v) => (v - min) / (max - min); // value → 0..1
+      const t = toT(value);
+
+      const H = 36, cy = H / 2; // fixed container height, vertically centered
+      const WALL_X = 5;          // left wall x position
+
+      // Measure true pixel width of track container
+      const containerRef = useRef(null);
+      const [W, setW] = useState(220);
+      useEffect(() => {
+        if (!containerRef.current) return;
+        const ro = new ResizeObserver(entries => {
+          const w = entries[0].contentRect.width;
+          if (w > 0) setW(w);
+        });
+        ro.observe(containerRef.current);
+        return () => ro.disconnect();
+      }, []);
+
+      // Spring-animated visual t (0..1)
+      const [visualT, setVisualT] = useState(t);
+      const vtRef = useRef(t);   // current animated position
+      const velRef = useRef(0);   // current velocity
+      const rafRef = useRef(null);
+      const dragging = useRef(false);
+      const tRef = useRef(t);
+      useEffect(() => { tRef.current = t; }, [t]);
+
+      // Spring: animates vtRef toward `target`, with optional initial kick velocity.
+      // Physics: severely underdamped (ζ≈0.10) — K=900 (very stiff snap), D=6 (almost no
+      // damping). Real rubber bands at this ratio oscillate 6-8× before settling.
+      const springTo = useCallback((target, v0 = 0, K = 900, D = 6) => {
+        if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+        velRef.current = v0;
+        let last = performance.now();
+        const tick = (now) => {
+          const dt = Math.min((now - last) / 1000, 0.032);
+          last = now;
+          velRef.current += (-K * (vtRef.current - target) - D * velRef.current) * dt;
+          vtRef.current += velRef.current * dt;
+          setVisualT(vtRef.current);
+          if (Math.abs(vtRef.current - target) > 0.0008 || Math.abs(velRef.current) > 0.004) {
+            rafRef.current = requestAnimationFrame(tick);
+          } else {
+            vtRef.current = target; velRef.current = 0;
+            setVisualT(target); rafRef.current = null;
+          }
+        };
+        rafRef.current = requestAnimationFrame(tick);
+      }, []);
+
+      // While dragging: follow t exactly, no spring
+      useEffect(() => {
+        if (!dragging.current) return;
+        if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+        vtRef.current = t; velRef.current = 0;
+        setVisualT(t);
+      }, [t]);
+
+      const onDragStart = useCallback(() => { dragging.current = true; }, []);
+      const onDragEnd = useCallback(() => {
+        dragging.current = false;
+        const cur = tRef.current;
+        // Massive elastic kick — gum flings hard past center before snapping back.
+        const kickV = (0.5 - cur) * 16.0;
+        springTo(cur, kickV);
+      }, [springTo]);
+
+      // Intercept onChange to implement snap points
+      const handleChange = useCallback((e) => {
+        let val = Number(e.target.value);
+        for (const snap of snapPoints) {
+          if (Math.abs(val - snap) <= step * 1.6) { val = snap; break; }
+        }
+        // Synthesise a modified event
+        const synth = Object.create(e);
+        Object.defineProperty(synth, 'target', { value: { ...e.target, value: String(val) } });
+        onChange(synth);
+      }, [onChange, snapPoints, step]);
+
+      // ── Shape ────────────────────────────────────────────────────────────────
+      const vt = Math.max(0, Math.min(1, visualT));
+
+      // Right blob center X: spans [WALL_X + rH_min, W - rH_max]
+      // We always leave enough room so the blob never clips the wall or right edge
+      const rH = 3 + 5.5 * vt;        // blob radius: 3px at squish → 8.5px at stretch (half of before)
+      const lH = 14 - 12 * vt;       // wall attachment half-height: 14px squish → 2px stretch
+
+      // Position the blob center so:
+      //   • at t=0 it sits flush against the wall (rx = WALL_X + rH)
+      //   • at t=1 it reaches the right end (rx = W - rH - 2)
+      const rxMin = WALL_X + rH + 1;
+      const rxMax = W - rH - 2;
+      const rx = rxMin + vt * (rxMax - rxMin);
+      const gumLen = rx - WALL_X;
+
+      // Bezier control points: cp1 hugs wall → creates narrow tail on stretch side
+      const cp1x = WALL_X + gumLen * 0.15;
+      const cp2x = rx - rH * 0.8;
+
+      // Main gum path: flat left edge (pressed to wall), bezier body, round right blob
+      const pathD = [
+        `M ${WALL_X} ${cy - lH}`,
+        `C ${cp1x} ${cy - lH}, ${cp2x} ${cy - rH}, ${rx} ${cy - rH}`,
+        `A ${rH} ${rH} 0 0 1 ${rx} ${cy + rH}`,
+        `C ${cp2x} ${cy + rH}, ${cp1x} ${cy + lH}, ${WALL_X} ${cy + lH}`,
+        `Z`,   // straight left edge — flat against wall
+      ].join(' ');
+
+      // Specular highlight: top ~45% of blob + upper belly of tail
+      const hlRH = rH * 0.52, hlLH = lH * 0.48;
+      const hlPath = [
+        `M ${WALL_X} ${cy - lH}`,
+        `C ${cp1x} ${cy - lH}, ${cp2x} ${cy - rH}, ${rx} ${cy - rH}`,
+        `A ${rH} ${rH} 0 0 1 ${rx} ${cy - rH + hlRH * 2}`,
+        `C ${cp2x} ${cy - rH + hlRH}, ${cp1x} ${cy - lH + hlLH * 2}, ${WALL_X} ${cy - lH + hlLH * 2}`,
+        `Z`,
+      ].join(' ');
+
+      // Gum color: warm beige-white, slightly warmer/denser when squished
+      const rc = Math.round(200 + 15 * (1 - vt));
+      const gc = Math.round(190 + 12 * (1 - vt));
+      const bc = Math.round(180 + 8 * (1 - vt));
+      const gumFill = disabled ? '#3a3a3a' : `rgb(${rc},${gc},${bc})`;
+
+      // Snap notch position on track groove
+      const snapFrac = toT(100);
+      const snapNotchX = WALL_X + snapFrac * (W - WALL_X - 4);
+
+      return (
+        <div className="flex items-center gap-2 bg-[#1C1C1E] border border-[#2C2C2E] rounded-lg px-3 py-1.5 flex-1 min-w-[200px] max-w-[300px]">
+          {showLabels && <span className="text-[9px] font-black text-neutral-500 uppercase tracking-widest whitespace-nowrap select-none">Squish</span>}
+
+          <div ref={containerRef} className="relative flex-1" style={{ height: `${H}px` }}>
+            {/* Invisible native range input — provides all interaction */}
+            <input
+              type="range"
+              style={{
+                position: 'absolute', inset: 0, width: '100%', height: '100%',
+                opacity: 0, cursor: disabled ? 'default' : 'ew-resize',
+                zIndex: 3, margin: 0, padding: 0
+              }}
+              min={min} max={max} step={step} value={value}
+              onChange={handleChange}
+              onMouseDown={onDragStart} onTouchStart={onDragStart}
+              onMouseUp={onDragEnd} onTouchEnd={onDragEnd}
+              disabled={disabled}
+            />
+
+            <svg aria-hidden="true" viewBox={`0 0 ${W} ${H}`}
+              style={{
+                position: 'absolute', left: 0, top: 0, width: '100%', height: '100%',
+                pointerEvents: 'none', zIndex: 1, overflow: 'visible'
+              }}>
+              <defs>
+                <linearGradient id="gumHL2" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="rgba(255,255,255,0.38)" />
+                  <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+                </linearGradient>
+              </defs>
+
+              {/* Track groove */}
+              <line x1={WALL_X} y1={cy} x2={W - 4} y2={cy}
+                stroke="#2a2a2a" strokeWidth="3" strokeLinecap="round" />
+
+              {/* 100% snap notch */}
+              {snapPoints.includes(100) && (
+                <line x1={snapNotchX} y1={cy - 6} x2={snapNotchX} y2={cy + 6}
+                  stroke={Math.abs(value - 100) < 3 ? '#666' : '#3a3a3a'}
+                  strokeWidth="1.5" strokeLinecap="round" />
+              )}
+
+
+
+              {/* Gum body */}
+              <path d={pathD} fill={gumFill} />
+
+              {/* Specular highlight — top lobe gives 3-D dewdrop look */}
+              {!disabled && <path d={hlPath} fill="url(#gumHL2)" />}
+            </svg>
+          </div>
+
+          {showLabels && <span className="text-[9px] font-black text-neutral-500 uppercase tracking-widest whitespace-nowrap select-none">Stretch</span>}
+          <span className="text-xs font-bold text-neutral-400 w-8 text-right whitespace-nowrap tabular-nums">{value}%</span>
+        </div>
       );
     };
 
@@ -594,6 +801,7 @@
       // Layout State (Resizable Sidebar)
       const [sidebarWidth, setSidebarWidth] = useState(480);
       const isDragging = useRef(false);
+      const sidebarRef = useRef(null);
 
       // Global Info
       const [teacherName, setTeacherName] = useState("");
@@ -623,10 +831,12 @@
       const [layoutScale, setLayoutScale] = useState(1.0);
       const [mobilePreviewLoading, setMobilePreviewLoading] = useState(false);
       const [mobileScalePending, setMobileScalePending] = useState(null);
+      const [mobileViewZoom, setMobileViewZoom] = useState(1.0);
       const mobileLoadTaskRef = useRef(null);
       const mobileScrollRef = useRef(null);
+      const mobilePinchRef = useRef({ active: false, startDist: 0, startZoom: 1.0 });
 
-      const sidebarRef = useRef(null);
+      const scaleToT = (s) => (s * 100 - 75) / 50; // 0..1
 
       // --- Initialization ---
       useEffect(() => {
@@ -1128,9 +1338,19 @@
               const headerBoxWidth = leftPanelWidth + rightPanelWidth;
               const boxX = pageWidth - margin - headerBoxWidth;
 
-              const boxHeight = Math.max(8, 15 * layoutScale);
-              const boxY = titleY - Math.max(6, 13 * layoutScale);
-              const boxCenterY = boxY + boxHeight / 2;
+              // Anchor: day text baseline = titleY (bottom-aligned with "TOC NOTES")
+              // jsPDF alphabetic baseline — descender ≈ 20% of pt size in mm
+              const scaleFactor = doc.internal.scaleFactor;
+              const dayDescender = daySize * 0.22 / scaleFactor;
+              const dayAscender = daySize * 0.78 / scaleFactor;
+              const dayBaseline = titleY; // bottom-aligned with title
+
+              // Box: from above the day cap-height down to titleY + small padding
+              const boxPadV = sp(1.5);
+              const boxY = dayBaseline - dayAscender - boxPadV;
+              const boxBottom = dayBaseline + dayDescender + boxPadV;
+              const boxHeight = boxBottom - boxY;
+              const boxCenterY = (boxY + boxBottom) / 2;
 
               doc.setFillColor(255, 255, 255);
               doc.setDrawColor(220, 220, 225);
@@ -1138,19 +1358,22 @@
               doc.roundedRect(boxX, boxY, headerBoxWidth, boxHeight, 2, 2, "FD");
 
               doc.setDrawColor(230, 230, 235);
-              doc.line(boxX + leftPanelWidth, boxY + 2, boxX + leftPanelWidth, boxY + boxHeight - 2);
+              doc.line(boxX + leftPanelWidth, boxY + 2, boxX + leftPanelWidth, boxBottom - 2);
 
+              // Day: baseline-aligned with title
               doc.setFontSize(daySize);
               doc.setTextColor(228, 32, 37);
-              doc.text(dayStr, boxX + leftPanelWidth / 2, boxCenterY, { align: "center", baseline: "middle" });
+              doc.text(dayStr, boxX + leftPanelWidth / 2, dayBaseline, { align: "center", baseline: "alphabetic" });
 
+              // Date + teacher: stacked in right panel, centered vertically
+              const rowGap = (boxHeight - dateSize / scaleFactor - nameSize / scaleFactor) / 3;
               doc.setFontSize(dateSize);
               doc.setTextColor(120, 120, 120);
-              doc.text(dateFormatted, boxX + leftPanelWidth + 6, boxCenterY - 3 * layoutScale, { baseline: "middle" });
+              doc.text(dateFormatted, boxX + leftPanelWidth + 6, boxY + rowGap + dateSize * 0.75 / scaleFactor, { baseline: "alphabetic" });
 
               doc.setFontSize(nameSize);
               doc.setTextColor(40, 40, 40);
-              doc.text(teacherStrFormatted, boxX + leftPanelWidth + 6, boxCenterY + 3 * layoutScale, { baseline: "middle" });
+              doc.text(teacherStrFormatted, boxX + leftPanelWidth + 6, boxBottom - rowGap - nameSize * 0.25 / scaleFactor, { baseline: "alphabetic" });
             }
 
             // Divider Line beneath header — compresses with header
@@ -1671,6 +1894,7 @@
         setMobilePreviewLoading(true);
         setMobilePreviewPage(1);
         setMobilePreviewOpen(true);
+        setMobileViewZoom(1.0);
         const arrayBuffer = doc.output("arraybuffer");
         window.pdfjsLib
           .getDocument({ data: arrayBuffer })
@@ -1721,18 +1945,50 @@
         return () => clearTimeout(timer);
       }, [daysData, teacherName, scriptsLoaded, appState, generatePDF]);
 
-      // Block pinch-zoom on mobile preview scroll container (must be non-passive)
+      // Pinch-to-zoom on mobile preview — CSS transform only, never re-renders PDF
       useEffect(() => {
         const el = mobileScrollRef.current;
-        if (!el) return;
-        const block = (e) => { if (e.touches.length > 1) e.preventDefault(); };
-        el.addEventListener("touchstart", block, { passive: false });
-        el.addEventListener("touchmove", block, { passive: false });
-        return () => {
-          el.removeEventListener("touchstart", block);
-          el.removeEventListener("touchmove", block);
+        if (!el || !mobilePreviewOpen) return;
+
+        const onTouchStart = (e) => {
+          if (e.touches.length === 2) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            mobilePinchRef.current = {
+              active: true,
+              startDist: Math.hypot(dx, dy),
+              startZoom: mobileViewZoom,
+            };
+          }
         };
-      }, [mobilePreviewOpen]);
+
+        const onTouchMove = (e) => {
+          if (e.touches.length === 2) {
+            e.preventDefault();
+            if (!mobilePinchRef.current.active) return;
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.hypot(dx, dy);
+            const ratio = dist / mobilePinchRef.current.startDist;
+            const next = Math.min(3.0, Math.max(0.5, mobilePinchRef.current.startZoom * ratio));
+            setMobileViewZoom(next);
+          }
+        };
+
+        const onTouchEnd = (e) => {
+          if (e.touches.length < 2) mobilePinchRef.current.active = false;
+        };
+
+        el.addEventListener("touchstart", onTouchStart, { passive: false });
+        el.addEventListener("touchmove", onTouchMove, { passive: false });
+        el.addEventListener("touchend", onTouchEnd);
+        return () => {
+          el.removeEventListener("touchstart", onTouchStart);
+          el.removeEventListener("touchmove", onTouchMove);
+          el.removeEventListener("touchend", onTouchEnd);
+        };
+      }, [mobilePreviewOpen, mobileViewZoom]);
 
       // Debounced mobile scale preview — cancels any in-flight task before starting a new one
       useEffect(() => {
@@ -1769,7 +2025,7 @@
       useEffect(() => {
         if (!scriptsLoaded || appState !== "editing") return;
         generatePDF(false);
-      }, [layoutScale]);
+      }, [layoutScale, scriptsLoaded, appState, generatePDF]);
 
       const currentDayData = daysData[currentDayIndex];
       const currentSchedule = currentDayData
@@ -2296,7 +2552,7 @@
           {/* MOBILE PDF PREVIEW MODAL */}
           {mobilePreviewOpen && (
             <div className="md:hidden fixed inset-0 z-[300] bg-neutral-950 flex flex-col"
-              style={{ touchAction: "pan-y" }}
+              style={{ touchAction: "pan-y", userSelect: "none" }}
             >
               {/* Modal Header */}
               <div className="flex-shrink-0 h-14 bg-[#141415] border-b border-[#2C2C2E] flex items-center justify-between px-4 shadow-md">
@@ -2327,33 +2583,19 @@
                 </button>
               </div>
 
-              {/* Scale Tool Bar — large touch targets for mobile */}
-              <div className="flex-shrink-0 bg-[#0f2233] border-b border-sky-900/40 flex items-center justify-between px-4 py-2.5 gap-3">
-                <span className="text-[10px] font-black text-sky-400 uppercase tracking-widest whitespace-nowrap">PDF Scale</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      const newScale = Math.max(0.75, Math.round((layoutScale - 0.02) * 100) / 100);
-                      setLayoutScale(newScale);
-                      setMobileScalePending(newScale);
-                    }}
-                    disabled={layoutScale <= 0.75}
-                    className="w-11 h-11 rounded-xl bg-neutral-800 text-white text-xl font-bold disabled:opacity-30 active:bg-neutral-600 flex items-center justify-center"
-                  >−</button>
-                  <button
-                    onClick={() => { setLayoutScale(1.0); setMobileScalePending(1.0); }}
-                    className="px-3 h-11 rounded-xl bg-neutral-800 text-sky-300 text-sm font-bold min-w-[56px] active:bg-neutral-600"
-                  >{Math.round(layoutScale * 100)}%</button>
-                  <button
-                    onClick={() => {
-                      const newScale = Math.min(1.25, Math.round((layoutScale + 0.02) * 100) / 100);
-                      setLayoutScale(newScale);
-                      setMobileScalePending(newScale);
-                    }}
-                    disabled={layoutScale >= 1.25}
-                    className="w-11 h-11 rounded-xl bg-neutral-800 text-white text-xl font-bold disabled:opacity-30 active:bg-neutral-600 flex items-center justify-center"
-                  >+</button>
-                </div>
+              {/* Scale Tool Bar */}
+              <div className="flex-shrink-0 bg-[#1C1C1E] border-b border-[#2C2C2E] flex items-center px-4 py-2 gap-2">
+                <GumSlider
+                  value={Math.round(layoutScale * 100)}
+                  min={75} max={125} step={2}
+                  snapPoints={[100]}
+                  onChange={(e) => {
+                    const newScale = Number(e.target.value) / 100;
+                    setLayoutScale(newScale);
+                    setMobileScalePending(newScale);
+                  }}
+                  disabled={false}
+                />
               </div>
 
               {/* Modal Body — vertical scroll through all pages, pinch zoom disabled */}
@@ -2378,7 +2620,14 @@
                     Generating preview…
                   </div>
                 ) : mobilePreviewDoc ? (
-                  <div className="flex flex-col items-center gap-6 py-6 px-4">
+                  <div
+                    className="flex flex-col items-center gap-6 py-6 px-4"
+                    style={{
+                      transform: `scale(${mobileViewZoom})`,
+                      transformOrigin: "top center",
+                      transition: "transform 0.05s linear",
+                    }}
+                  >
                     {Array.from({ length: mobilePreviewTotalPages }).map((_, i) => (
                       <div key={i} className="mobile-pdf-page w-full flex justify-center">
                         <PdfPage
@@ -2434,28 +2683,14 @@
               </div>
 
               {/* Scale Control */}
-              <div className="flex items-center gap-2 bg-[#0f2233] border border-sky-900/50 rounded-lg px-3 py-1.5 flex-1 min-w-[160px] max-w-[260px]">
-                <span className="text-[10px] font-black text-sky-400 uppercase tracking-widest whitespace-nowrap">Scale</span>
-                <input
-                  type="range"
-                  className="scale-slider flex-1"
-                  min="75"
-                  max="125"
-                  step="2"
+              <div className="flex items-center gap-1 flex-1 min-w-[200px] max-w-[310px]">
+                <GumSlider
                   value={Math.round(layoutScale * 100)}
+                  min={75} max={125} step={2}
+                  snapPoints={[100]}
                   onChange={(e) => setLayoutScale(Number(e.target.value) / 100)}
                   disabled={appState !== "editing"}
                 />
-                <span className="text-xs font-bold text-sky-300 w-9 text-right whitespace-nowrap">
-                  {Math.round(layoutScale * 100)}%
-                </span>
-                {layoutScale !== 1.0 && (
-                  <button
-                    onClick={() => setLayoutScale(1.0)}
-                    title="Reset to 100%"
-                    className="text-neutral-500 hover:text-sky-300 transition-colors text-sm leading-none ml-0.5"
-                  >↺</button>
-                )}
               </div>
 
               <button
