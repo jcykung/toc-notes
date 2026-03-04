@@ -190,6 +190,11 @@
       .scroll-smooth {
         scroll-behavior: smooth;
       }
+
+      /* Auto-size textareas to content so no excess empty space below last line */
+      textarea {
+        field-sizing: content;
+      }
     </style>
   </head>
 
@@ -1145,7 +1150,7 @@
                   dayConfig.generalNotes.trim(),
                   pageWidth - margin * 2 - 10,
                 );
-                const notesBoxHeight = splitNotes.length * 4.5 + 1.5;
+                const notesBoxHeight = splitNotes.length * 4.5 + 3;
 
                 doc.setDrawColor(228, 32, 37);
                 doc.setLineWidth(1);
@@ -1300,7 +1305,7 @@
                     let calcHeight = headerHeight + 4.5; // Starts drawing notes here
 
                     if (notesLines.length > 0) {
-                      calcHeight += notesLines.length * 4.5 + 2;
+                      calcHeight += notesLines.length * 4.5 + 1;
                     }
 
                     if (processedImages.length > 0) {
@@ -1308,11 +1313,11 @@
                       calcHeight += imagesHeight;
                     }
 
-                    // Bottom padding: images need generous clearance; notes-only just needs a hair
+                    // Bottom padding: tight below last text line
                     if (processedImages.length > 0) {
-                      calcHeight += 4;
+                      calcHeight += 4.5;
                     } else if (notesLines.length > 0) {
-                      calcHeight += 1;
+                      calcHeight += 0;
                     } else {
                       calcHeight += 2;
                     }
@@ -1533,7 +1538,7 @@
                   dayConfig.finalNotes.trim(),
                   pageWidth - margin * 2 - 10,
                 );
-                const notesBoxHeight = finalNotesLines.length * 4.5 + 1.5;
+                const notesBoxHeight = finalNotesLines.length * 4.5 + 3;
 
                 // Prevent cutoff
                 if (currentY + notesBoxHeight + 15 > pageHeight - margin) {
@@ -1990,7 +1995,7 @@
                                   )
                                 }
                                 rows="3"
-                                className="w-full px-4 pt-3 pb-1 rounded-xl path-input text-sm resize-y"
+                                className="w-full px-4 py-3 rounded-xl path-input text-sm resize-y"
                                 placeholder="Lesson plans, activities, etc."
                               ></textarea>
 
