@@ -2311,27 +2311,17 @@
                   onChange={(e) => {
                     const newScale = Number(e.target.value) / 100;
                     setLayoutScale(newScale);
-                    // Regenerate preview with new scale
                     const doc = buildPDF(newScale);
                     if (!doc || !window.pdfjsLib) return;
-                    setMobilePreviewLoading(true);
-                    doc.outputAsync("arraybuffer").then((buf) => {
-                      window.pdfjsLib.getDocument({ data: buf }).promise.then((pdf) => {
+                    const arrayBuffer = doc.output("arraybuffer");
+                    window.pdfjsLib.getDocument({ data: arrayBuffer }).promise
+                      .then((pdf) => {
                         setMobilePreviewDoc(pdf);
                         setMobilePreviewTotalPages(pdf.numPages);
                         setMobilePreviewPage((p) => Math.min(p, pdf.numPages));
                         setMobilePreviewLoading(false);
-                      });
-                    }).catch(() => {
-                      // outputAsync not available in older jsPDF, fall back
-                      const buf = doc.output("arraybuffer");
-                      window.pdfjsLib.getDocument({ data: buf }).promise.then((pdf) => {
-                        setMobilePreviewDoc(pdf);
-                        setMobilePreviewTotalPages(pdf.numPages);
-                        setMobilePreviewPage((p) => Math.min(p, pdf.numPages));
-                        setMobilePreviewLoading(false);
-                      });
-                    });
+                      })
+                      .catch((err) => console.error("Mobile scale preview error", err));
                   }}
                 />
                 <span className="text-xs font-bold text-sky-300 w-9 text-right whitespace-nowrap">
