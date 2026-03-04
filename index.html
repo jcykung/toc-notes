@@ -1948,71 +1948,94 @@
         return () => clearTimeout(timer);
       }, [daysData, teacherName, scriptsLoaded, appState, generatePDF]);
 
-      // Mobile touch: 1 finger = pan, 2 fingers = pinch-zoom. All DOM-direct, zero React re-renders per frame.
+      // Mobile touch: 1 finger = pan, 2 fingers = pinch-zoom at midpoint.
+      // State: ox/oy = translation in px, z = scale. transformOrigin is always "0 0".
+      // Affine rule for zoom at point P: ox_new = Px - (Px - ox) * (newZ / oldZ), same for y.
       const mobileContentRef = useRef(null);
-      const pinchZoomRef = useRef(mobileViewZoom);
+      const mobileXform = useRef({ ox: 0, oy: 0, z: 1.0 }); // single source of truth
 
       const applyMobileTransform = useCallback(() => {
         if (!mobileContentRef.current) return;
-        const { ox, oy } = mobilePanRef.current;
-        mobileContentRef.current.style.transform = `translate(${ox}px, ${oy}px) scale(${pinchZoomRef.current})`;
+        const { ox, oy, z } = mobileXform.current;
+        mobileContentRef.current.style.transform = `translate(${ox}px,${oy}px) scale(${z})`;
       }, []);
 
       useEffect(() => {
         const el = mobileScrollRef.current;
         if (!el || !mobilePreviewOpen) return;
 
-        // Reset state when modal opens
-        mobilePanRef.current = { active: false, startX: 0, startY: 0, ox: 0, oy: 0 };
-        mobilePinchRef.current = { active: false, startDist: 0, startZoom: 1.0 };
-        pinchZoomRef.current = 1.0;
+        // Reset on open — centre content horizontally
+        mobileXform.current = { ox: 0, oy: 0, z: 1.0 };
         applyMobileTransform();
+
+        // Per-gesture working vars (not in React state)
+        let panActive = false, panStartX = 0, panStartY = 0, panBaseOx = 0, panBaseOy = 0;
+        let pinchActive = false, pinchStartDist = 0, pinchStartZ = 1;
+        let pinchBaseOx = 0, pinchBaseOy = 0, pinchMidX = 0, pinchMidY = 0;
+
+        const elRect = () => el.getBoundingClientRect();
 
         const onTouchStart = (e) => {
           e.preventDefault();
-          if (e.touches.length === 2) {
-            // Cancel pan, start pinch
-            mobilePanRef.current.active = false;
-            const dx = e.touches[0].clientX - e.touches[1].clientX;
-            const dy = e.touches[0].clientY - e.touches[1].clientY;
-            mobilePinchRef.current = {
-              active: true,
-              startDist: Math.hypot(dx, dy),
-              startZoom: pinchZoomRef.current,
-            };
+          if (e.touches.length >= 2) {
+            // ── Pinch start ──
+            panActive = false;
+            const t0 = e.touches[0], t1 = e.touches[1];
+            pinchStartDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+            pinchStartZ = mobileXform.current.z;
+            pinchBaseOx = mobileXform.current.ox;
+            pinchBaseOy = mobileXform.current.oy;
+            const rect = elRect();
+            // Midpoint in container-local coords
+            pinchMidX = (t0.clientX + t1.clientX) / 2 - rect.left;
+            pinchMidY = (t0.clientY + t1.clientY) / 2 - rect.top;
+            pinchActive = true;
           } else if (e.touches.length === 1) {
-            // Cancel pinch, start pan
-            mobilePinchRef.current.active = false;
-            mobilePanRef.current = {
-              active: true,
-              startX: e.touches[0].clientX - mobilePanRef.current.ox,
-              startY: e.touches[0].clientY - mobilePanRef.current.oy,
-              ox: mobilePanRef.current.ox,
-              oy: mobilePanRef.current.oy,
-            };
+            // ── Pan start ──
+            pinchActive = false;
+            panBaseOx = mobileXform.current.ox;
+            panBaseOy = mobileXform.current.oy;
+            panStartX = e.touches[0].clientX;
+            panStartY = e.touches[0].clientY;
+            panActive = true;
           }
         };
 
         const onTouchMove = (e) => {
           e.preventDefault();
-          if (e.touches.length === 2 && mobilePinchRef.current.active) {
-            const dx = e.touches[0].clientX - e.touches[1].clientX;
-            const dy = e.touches[0].clientY - e.touches[1].clientY;
-            const ratio = Math.hypot(dx, dy) / mobilePinchRef.current.startDist;
-            pinchZoomRef.current = Math.min(3.0, Math.max(0.5, mobilePinchRef.current.startZoom * ratio));
+          if (pinchActive && e.touches.length >= 2) {
+            const t0 = e.touches[0], t1 = e.touches[1];
+            const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+            const ratio = dist / pinchStartDist;
+            const newZ = Math.min(4.0, Math.max(0.4, pinchStartZ * ratio));
+            const zRatio = newZ / pinchStartZ;
+            // Keep the pinch midpoint fixed: new offset = mid - (mid - base) * zRatio
+            mobileXform.current = {
+              ox: pinchMidX - (pinchMidX - pinchBaseOx) * zRatio,
+              oy: pinchMidY - (pinchMidY - pinchBaseOy) * zRatio,
+              z: newZ,
+            };
             applyMobileTransform();
-          } else if (e.touches.length === 1 && mobilePanRef.current.active) {
-            mobilePanRef.current.ox = e.touches[0].clientX - mobilePanRef.current.startX;
-            mobilePanRef.current.oy = e.touches[0].clientY - mobilePanRef.current.startY;
+          } else if (panActive && e.touches.length === 1) {
+            mobileXform.current.ox = panBaseOx + (e.touches[0].clientX - panStartX);
+            mobileXform.current.oy = panBaseOy + (e.touches[0].clientY - panStartY);
             applyMobileTransform();
           }
         };
 
         const onTouchEnd = (e) => {
-          if (e.touches.length < 2) mobilePinchRef.current.active = false;
+          if (e.touches.length < 2) pinchActive = false;
+          if (e.touches.length < 1) panActive = false;
+          if (e.touches.length === 1 && !panActive) {
+            // Finger lifted from pinch → restart pan from remaining finger
+            panBaseOx = mobileXform.current.ox;
+            panBaseOy = mobileXform.current.oy;
+            panStartX = e.touches[0].clientX;
+            panStartY = e.touches[0].clientY;
+            panActive = true;
+          }
           if (e.touches.length === 0) {
-            mobilePanRef.current.active = false;
-            setMobileViewZoom(pinchZoomRef.current);
+            setMobileViewZoom(mobileXform.current.z);
           }
         };
 
@@ -2650,8 +2673,8 @@
                     ref={mobileContentRef}
                     className="flex flex-col items-center gap-6 py-6 px-4"
                     style={{
-                      transform: `translate(0px, 0px) scale(1)`,
-                      transformOrigin: "top center",
+                      transform: `translate(0px,0px) scale(1)`,
+                      transformOrigin: "0 0",
                       willChange: "transform",
                     }}
                   >
