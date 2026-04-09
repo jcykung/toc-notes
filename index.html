@@ -1287,7 +1287,7 @@
             doc.setTextColor(20, 20, 22);
             doc.setFontSize(titleFontSize);
             doc.setFont("helvetica", "bold");
-            doc.text("TOC NOTEMAKER", margin, titleY);
+            doc.text("TOC NOTES", margin, titleY);
 
             // Meta Info Block (Refined Compact Badge)
             const [yy, mm, dd] = dayConfig.date.split("-");
@@ -1341,7 +1341,7 @@
               const headerBoxWidth = leftPanelWidth + rightPanelWidth;
               const boxX = pageWidth - margin - headerBoxWidth;
 
-              // Anchor: day text baseline = titleY (bottom-aligned with "TOC NOTEMAKER")
+              // Anchor: day text baseline = titleY (bottom-aligned with "TOC NOTES")
               // jsPDF alphabetic baseline — descender ≈ 20% of pt size in mm
               const scaleFactor = doc.internal.scaleFactor;
               const dayDescender = daySize * 0.22 / scaleFactor;
@@ -1919,7 +1919,7 @@
           if (!doc) return;
 
           if (download) {
-            doc.save(`TOC_Notemaker_${daysData[0].date}.pdf`);
+            doc.save(`TOC_Notes_${daysData[0].date}.pdf`);
           } else {
             const arrayBuffer = doc.output("arraybuffer");
             if (window.pdfjsLib) {
@@ -2574,7 +2574,7 @@
                         onClick={() => {
                           const doc = buildPDF(layoutScale);
                           if (!doc) return;
-                          const fileName = `TOC_Notemaker_${daysData[0].date}.pdf`;
+                          const fileName = `TOC_Notes_${daysData[0].date}.pdf`;
                           if (navigator.share && navigator.canShare) {
                             const blob = doc.output("blob");
                             const file = new File([blob], fileName, {
@@ -2584,7 +2584,7 @@
                               navigator
                                 .share({
                                   files: [file],
-                                  title: "TOC Notemaker",
+                                  title: "TOC Notes",
                                 })
                                 .catch((err) => {
                                   // User cancelled or share failed — fall back to download
@@ -2703,12 +2703,12 @@
                     onClick={() => {
                       const doc = buildPDF(layoutScale);
                       if (!doc) return;
-                      const fileName = `TOC_Notemaker_${daysData[0].date}.pdf`;
+                      const fileName = `TOC_Notes_${daysData[0].date}.pdf`;
                       if (navigator.share && navigator.canShare) {
                         const blob = doc.output("blob");
                         const file = new File([blob], fileName, { type: "application/pdf" });
                         if (navigator.canShare({ files: [file] })) {
-                          navigator.share({ files: [file], title: "TOC Notemaker" })
+                          navigator.share({ files: [file], title: "TOC Notes" })
                             .catch((err) => { if (err.name !== "AbortError") doc.save(fileName); });
                           return;
                         }
