@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>TOC Notes Generator</title>
+  <title>TOC Notemaker</title>
 
   <!-- Tailwind CSS for Styling -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -1287,7 +1287,7 @@
             doc.setTextColor(20, 20, 22);
             doc.setFontSize(titleFontSize);
             doc.setFont("helvetica", "bold");
-            doc.text("TOC NOTES", margin, titleY);
+            doc.text("TOC NOTEMAKER", margin, titleY);
 
             // Meta Info Block (Refined Compact Badge)
             const [yy, mm, dd] = dayConfig.date.split("-");
@@ -1341,7 +1341,7 @@
               const headerBoxWidth = leftPanelWidth + rightPanelWidth;
               const boxX = pageWidth - margin - headerBoxWidth;
 
-              // Anchor: day text baseline = titleY (bottom-aligned with "TOC NOTES")
+              // Anchor: day text baseline = titleY (bottom-aligned with "TOC NOTEMAKER")
               // jsPDF alphabetic baseline — descender ≈ 20% of pt size in mm
               const scaleFactor = doc.internal.scaleFactor;
               const dayDescender = daySize * 0.22 / scaleFactor;
@@ -1876,7 +1876,7 @@
             const footerY = pageHeight - Math.max(5, margin * 0.6);
             doc.text(str, margin, footerY);
             doc.text(
-              "TOC Notes Generator",
+              "TOC Notemaker",
               pageWidth - margin,
               footerY,
               { align: "right" },
@@ -1919,7 +1919,7 @@
           if (!doc) return;
 
           if (download) {
-            doc.save(`TOC_Notes_${daysData[0].date}.pdf`);
+            doc.save(`TOC_Notemaker_${daysData[0].date}.pdf`);
           } else {
             const arrayBuffer = doc.output("arraybuffer");
             if (window.pdfjsLib) {
@@ -2133,7 +2133,7 @@
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-2">
                     <Icon name="FileText" className="text-[#E42025]" /> TOC
-                    Notes
+                    Notemaker
                   </h1>
                   <div className="flex items-center gap-3 mt-1.5">
                     <p className="text-[#E42025] font-medium text-sm">
@@ -2574,7 +2574,7 @@
                         onClick={() => {
                           const doc = buildPDF(layoutScale);
                           if (!doc) return;
-                          const fileName = `TOC_Notes_${daysData[0].date}.pdf`;
+                          const fileName = `TOC_Notemaker_${daysData[0].date}.pdf`;
                           if (navigator.share && navigator.canShare) {
                             const blob = doc.output("blob");
                             const file = new File([blob], fileName, {
@@ -2584,7 +2584,7 @@
                               navigator
                                 .share({
                                   files: [file],
-                                  title: "TOC Notes",
+                                  title: "TOC Notemaker",
                                 })
                                 .catch((err) => {
                                   // User cancelled or share failed — fall back to download
@@ -2703,12 +2703,12 @@
                     onClick={() => {
                       const doc = buildPDF(layoutScale);
                       if (!doc) return;
-                      const fileName = `TOC_Notes_${daysData[0].date}.pdf`;
+                      const fileName = `TOC_Notemaker_${daysData[0].date}.pdf`;
                       if (navigator.share && navigator.canShare) {
                         const blob = doc.output("blob");
                         const file = new File([blob], fileName, { type: "application/pdf" });
                         if (navigator.canShare({ files: [file] })) {
-                          navigator.share({ files: [file], title: "TOC Notes" })
+                          navigator.share({ files: [file], title: "TOC Notemaker" })
                             .catch((err) => { if (err.name !== "AbortError") doc.save(fileName); });
                           return;
                         }
