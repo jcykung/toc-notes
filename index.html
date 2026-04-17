@@ -806,7 +806,7 @@
       const sidebarRef = useRef(null);
 
       // Global Info
-      const [teacherName, setTeacherName] = useState("");
+      const [teacherName, setTeacherName] = useState(() => localStorage.getItem("tocTeacherName") || "");
 
       // Configuration State
       const [selectedAbsenceType, setSelectedAbsenceType] = useState("Full");
@@ -816,6 +816,7 @@
       // Days Data
       const [daysData, setDaysData] = useState([]);
       const [currentDayIndex, setCurrentDayIndex] = useState(0);
+      const [hasAutosave, setHasAutosave] = useState(false);
 
       // Built-in PDF Engine State
       const [pdfDoc, setPdfDoc] = useState(null);
@@ -834,6 +835,7 @@
       const [mobilePreviewLoading, setMobilePreviewLoading] = useState(false);
       const [mobileScalePending, setMobileScalePending] = useState(null);
       const [mobileViewZoom, setMobileViewZoom] = useState(1.0);
+      const desktopLoadTaskRef = useRef(null);
       const mobileLoadTaskRef = useRef(null);
       const mobileScrollRef = useRef(null);
       const mobilePinchRef = useRef({ active: false, startDist: 0, startZoom: 1.0 });
@@ -848,7 +850,25 @@
             "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
           setScriptsLoaded(true);
         }
+        setHasAutosave(!!localStorage.getItem("tocAutosave"));
       }, []);
+
+      useEffect(() => {
+        localStorage.setItem("tocTeacherName", teacherName);
+      }, [teacherName]);
+
+      useEffect(() => {
+        if (appState === "editing" && daysData.length > 0) {
+          localStorage.setItem("tocAutosave", JSON.stringify({
+            daysData,
+            currentDayIndex,
+            startDate,
+            endDate,
+            selectedAbsenceType
+          }));
+          setHasAutosave(true);
+        }
+      }, [appState, daysData, currentDayIndex, startDate, endDate, selectedAbsenceType]);
 
       // Non-passive wheel listener for pinch-zoom (must be imperative so we can preventDefault)
       useEffect(() => {
@@ -996,6 +1016,23 @@
         setCurrentDayIndex(0);
         setAppState("editing");
         if (sidebarRef.current) sidebarRef.current.scrollTop = 0;
+      };
+
+      const handleResumeSession = () => {
+        try {
+          const savedStr = localStorage.getItem("tocAutosave");
+          if (!savedStr) return;
+          const data = JSON.parse(savedStr);
+          setDaysData(data.daysData || []);
+          setCurrentDayIndex(data.currentDayIndex || 0);
+          setStartDate(data.startDate || initialWeekday);
+          setEndDate(data.endDate || initialWeekday);
+          setSelectedAbsenceType(data.selectedAbsenceType || "Full");
+          setAppState("editing");
+          if (sidebarRef.current) sidebarRef.current.scrollTop = 0;
+        } catch (e) {
+          console.error("Error parsing autosave", e);
+        }
       };
 
       const handleDayChange = (field, value) => {
@@ -1923,18 +1960,27 @@
           } else {
             const arrayBuffer = doc.output("arraybuffer");
             if (window.pdfjsLib) {
+              if (desktopLoadTaskRef.current) {
+                try { desktopLoadTaskRef.current.destroy(); } catch (_) {}
+              }
               const loadingTask = window.pdfjsLib.getDocument({
                 data: arrayBuffer,
               });
+              desktopLoadTaskRef.current = loadingTask;
               loadingTask.promise
                 .then((pdf) => {
+                  desktopLoadTaskRef.current = null;
                   setPdfDoc(pdf);
                   setPdfTotalPages(pdf.numPages);
                   setPreviewPage((current) =>
                     Math.min(current, pdf.numPages),
                   );
                 })
-                .catch((err) => console.error("Error loading PDF", err));
+                .catch((err) => {
+                  if (err?.name !== "RenderingCancelledException") {
+                     console.error("Error loading PDF", err);
+                  }
+                });
             }
           }
         },
@@ -2169,6 +2215,14 @@
                     Tap the red + button in the bottom left to create a new
                     absence plan.
                   </p>
+                  {hasAutosave && (
+                    <button
+                      onClick={handleResumeSession}
+                      className="mt-8 bg-neutral-800 hover:bg-neutral-700 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg transition-all flex justify-center items-center gap-2 transform active:scale-95 border border-[#333336]"
+                    >
+                      <Icon name="FileText" className="w-5 h-5 text-neutral-400" /> Resume Previous Work
+                    </button>
+                  )}
                 </div>
               )}
 
