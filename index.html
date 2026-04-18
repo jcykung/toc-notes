@@ -1451,12 +1451,8 @@
               doc.text(teacherStrFormatted, boxX + leftPanelWidth + 6, boxBottom - rowGap - nameSize * 0.25 / scaleFactor, { baseline: "alphabetic" });
             }
 
-            // Divider Line beneath header — compresses with header
+            // Space beneath header — compresses with header
             const dividerY = titleY + sp(4);
-            doc.setDrawColor(240, 240, 240);
-            doc.setLineWidth(0.5);
-            doc.line(margin, dividerY, pageWidth - margin, dividerY);
-
             let currentY = dividerY + sp(8); // Content start
 
             // General Notes
