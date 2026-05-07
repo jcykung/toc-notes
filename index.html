@@ -841,8 +841,10 @@
       // Built-in PDF Engine State
       const [pdfDoc, setPdfDoc] = useState(null);
       const [previewPage, setPreviewPage] = useState(1);
-      const [previewZoom, setPreviewZoom] = useState(100);
       const [pdfTotalPages, setPdfTotalPages] = useState(1);
+      const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+      const [isBuildingPdf, setIsBuildingPdf] = useState(false);
+      const [previewZoom, setPreviewZoom] = useState(100);
 
       // Mobile preview modal
       const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
@@ -1988,12 +1990,25 @@
       // --- Handlers for PDF Action ---
       const generatePDF = useCallback(
         (download = false) => {
-          const doc = buildPDF(layoutScale);
-          if (!doc) return;
-
+          if (!scriptsLoaded) return;
+          
           if (download) {
-            doc.save(`TOC_Notes_${daysData[0].date}.pdf`);
-          } else {
+            const doc = buildPDF(layoutScale);
+            if (doc) doc.save(`TOC_Notes_${daysData[0].date}.pdf`);
+            return;
+          }
+
+          // Desktop preview generation
+          setIsBuildingPdf(true);
+          
+          // Use setTimeout 0 to allow UI to update (show loading state) before heavy sync build
+          setTimeout(() => {
+            const doc = buildPDF(layoutScale);
+            if (!doc) {
+              setIsBuildingPdf(false);
+              return;
+            }
+
             const arrayBuffer = doc.output("arraybuffer");
             if (window.pdfjsLib) {
               if (desktopLoadTaskRef.current) {
@@ -2014,24 +2029,29 @@
                   setPreviewPage((current) =>
                     Math.min(current, pdf.numPages),
                   );
+                  setIsBuildingPdf(false);
                 })
                 .catch((err) => {
+                  setIsBuildingPdf(false);
                   if (err?.name !== "RenderingCancelledException") {
                      console.error("Error loading PDF", err);
                   }
                 });
+            } else {
+              setIsBuildingPdf(false);
             }
-          }
+          }, 0);
         },
-        [buildPDF, daysData, layoutScale],
+        [buildPDF, daysData, layoutScale, scriptsLoaded],
       );
 
-      // Debounced auto-preview for data/content changes
+      // Combined Debounced auto-preview for ALL changes (data, teacher name, scale)
       useEffect(() => {
         if (!scriptsLoaded || appState !== "editing") return;
-        const timer = setTimeout(() => generatePDF(false), 500);
+        // Faster 250ms debounce for near-instant feel without blocking main thread excessively
+        const timer = setTimeout(() => generatePDF(false), 250);
         return () => clearTimeout(timer);
-      }, [daysData, teacherName, scriptsLoaded, appState, generatePDF]);
+      }, [daysData, teacherName, scriptsLoaded, appState, generatePDF, layoutScale]);
 
       // Mobile touch: 1 finger = pan, 2 fingers = pinch-zoom at midpoint.
       // State: ox/oy = translation in px, z = scale. transformOrigin is always "0 0".
@@ -2168,11 +2188,7 @@
         return () => clearTimeout(timer);
       }, [mobileScalePending, mobilePreviewOpen, buildPDF]);
 
-      // Desktop: immediate preview when scale changes
-      useEffect(() => {
-        if (!scriptsLoaded || appState !== "editing") return;
-        generatePDF(false);
-      }, [layoutScale, scriptsLoaded, appState, generatePDF]);
+      // Scale updates are now handled by the combined debounced effect above
 
       const currentDayData = daysData[currentDayIndex];
       const currentSchedule = currentDayData
@@ -2920,6 +2936,16 @@
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                   >
+                    {/* Floating Update Indicator */}
+                    {isBuildingPdf && (
+                      <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[60] bg-[#1C1C1E]/90 backdrop-blur-md border border-[#E42025]/30 text-white px-4 py-2 rounded-full shadow-2xl flex items-center gap-2.5 animate-pulse">
+                        <div className="w-2 h-2 rounded-full bg-[#E42025] animate-ping" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.15em] text-neutral-300">
+                          Updating Preview…
+                        </span>
+                      </div>
+                    )}
+
                     {/* Inner wrapper expands to fit wide pages so horizontal scroll works correctly */}
                     <div className="flex flex-col items-center gap-8 pt-24 pb-20 min-w-max mx-auto px-8">
                       {Array.from({ length: pdfTotalPages }).map((_, i) => (
